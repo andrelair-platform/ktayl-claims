@@ -21,6 +21,20 @@
 | AVL-3 | **Graceful degradation if CDC is down** | ACL writes still succeed to the legacy; read-model goes stale + alerts; catches up on reconnect | stop Debezium; confirm no data loss |
 | AVL-4 | Cross-boundary call resilience | ACL→Oracle timeouts + circuit breaker; idempotent FNOL | fault injection |
 
+### Resilience patterns — retries · DLQ · idempotency (must be built in, not bolted on)
+
+These are the three failure modes a legacy-wrap actually hits: the legacy is slow/down, an event is
+delivered twice (NATS is at-least-once), or a message is poison. Each is a **testable** requirement.
+
+| ID | NFR | Target | Verify |
+|---|---|---|---|
+| RES-1 | **Retries w/ backoff** on the ACL→legacy SOAP call | bounded exponential backoff + jitter, capped attempts; a **timeout** on every call; only **idempotent/read** ops auto-retried (a create is retried only under the idempotency key, never blindly) | fault-inject latency + transient 5xx; assert bounded retries, no duplicate claims |
+| RES-2 | **Circuit breaker** ACL→legacy | opens after N consecutive failures → **fail fast** (serve reads from the read-model, reject writes *clearly*); half-open probe recovers | trip the breaker (stop Oracle); assert fast-fail + auto-recovery |
+| RES-3 | **Idempotent writes** (FNOL + lifecycle) | client **idempotency key** (dedup) on `POST /claims`; a ret/replay returns the same claim, never a second one; server-side dedup table | send the same FNOL twice (and concurrently) → exactly one claim |
+| RES-4 | **Idempotent projection** (read-model) | the projector applies each CDC event **exactly-once effect** (upsert keyed on event id / LSN + version); replaying the stream is a no-op | replay the whole stream → identical read-model, no dup rows |
+| RES-5 | **Dead-letter queue** for poison events | a CDC/NATS message that fails processing N times → **DLQ subject** (never blocks the stream, never silently dropped); DLQ depth alerts; documented re-drive | inject a malformed/failing event → lands in DLQ, stream keeps flowing, alert fires |
+| RES-6 | **At-least-once, no loss** end-to-end | JetStream durable consumer + explicit ack; an ack only after the projection commits (or the DLQ accepts it) | kill the projector mid-batch → on restart, no lost/skipped events |
+
 ## Durability / DR
 
 | ID | NFR | Target |

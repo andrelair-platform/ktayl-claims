@@ -54,8 +54,17 @@ The modern wrapper's entry point.
 - **AC (fail)** ✗ the LLM never emits SQL at Oracle; ✗ AI cannot write (AI-1); ✗ a restricted claim isn't exposed via the tool (T8).
 - **DoD** security-gate items (T4/T8) tested.
 
-**Slice total ≈ 44 pts.** Sequence: **S001→S002 (legacy runs) → S003→S004 (the wrap) → S005 (events) →
-S006 (reads) → S007 (AI, optional).**
+### S008 — Resilience: retries · DLQ · idempotency · circuit-breaker  · [CLM-01 / cross-cutting] · P1 · 5
+The three failure modes a legacy-wrap actually hits — legacy slow/down, duplicate event, poison message —
+built **in**, not bolted on. Cross-cutting: its ACs are proven against S003–S006.
+- **AC** ✓ ACL→legacy SOAP has **timeout + bounded backoff retry (jitter) + circuit breaker** (RES-1/2); ✓ **idempotent FNOL** via a client idempotency key — same key/replay ⇒ **one** claim, even concurrently (RES-3); ✓ **idempotent projection** — replaying the CDC stream leaves the read-model identical, no dup rows (RES-4); ✓ **DLQ** for poison CDC/NATS events — failed message goes to a DLQ subject, the stream keeps flowing, DLQ-depth alert fires (RES-5); ✓ JetStream durable consumer + **ack-after-commit** ⇒ kill the projector mid-batch, restart, **no lost events** (RES-6).
+- **AC (fail)** ✗ a create is **never** blindly auto-retried (only under the idempotency key); ✗ a poison event **never** blocks the stream and is **never** silently dropped.
+- **DoD** chaos drills scripted (stop Oracle → breaker trips + reads still served AVL-2; stop Debezium → catch-up no-loss AVL-3; double-send FNOL; replay stream; inject poison event); DLQ re-drive runbook.
+
+**Slice total ≈ 49 pts.** Sequence: **S001→S002 (legacy runs) → S003→S004 (the wrap) → S005 (events) →
+S006 (reads) → S007 (AI, optional)**, with **S008 resilience woven through S003–S006** (each cross-boundary
+call and each event consumer ships with its retry/idempotency/DLQ behaviour + its chaos drill — not a
+trailing hardening phase).
 
 ## Sprint-planning readiness gate
 
@@ -66,6 +75,7 @@ S006 (reads) → S007 (AI, optional).**
 | Architecture spine + C4 + ADRs | ✅ [Solution Architecture](./architecture/solution-architecture.md) + [ADRs](./architecture/adr/000-index.md) |
 | Threat model (boundary change) | ✅ [Threat Model](./architecture/threat-model.md) — T4/T8 (AI PII) + T5 (legacy egress/least-priv) = the security-gate blockers |
 | Scope disciplined (thin slice, deferrals explicit) | ✅ one LOB, lifecycle spine only; adjusters/subrogation/fraud/litigation deferred; migration a later footnote |
+| Resilience built in (retries/DLQ/idempotency) | ✅ **S008** + NFR **RES-1…6** — woven through S003–S006 with chaos drills, not a trailing phase |
 | ACL stack | ✅ **resolved — Java 21 + Spring Boot** (mature SOAP client + Oracle realism), ADR-006 |
 | Oracle placement | ✅ **resolved — on the controller** (Docker, outside k8s, like MinIO), ADR-002 — with a disk-monitoring caveat (controller ~98 G, MinIO ~33 G) |
 

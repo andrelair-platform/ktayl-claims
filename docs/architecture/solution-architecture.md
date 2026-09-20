@@ -159,6 +159,28 @@ legacy. GlobalCore + Oracle are **not** GitOps-managed (traditional infra, docke
 3. **AI (v1, read-only):** handler question → ACL SQL-tool (approved columns, identity-scoped, PII-masked) →
    read-model; document questions → RAG (Qdrant). Never the LLM speaking SOAP or SQL to the legacy.
 
+## 6b. Resilience — where each pattern lives
+
+A legacy-wrap fails in three predictable places; the design puts a named control at each
+([NFR RES-1…6](./nfr-register.md#resilience-patterns--retries--dlq--idempotency-must-be-built-in-not-bolted-on)):
+
+```
+ACL ──SOAP──► GlobalCore/Oracle      : timeout + bounded backoff-retry (jitter) + CIRCUIT BREAKER
+   (legacy slow/down)                  breaker open ⇒ reads from read-model, writes rejected clearly (AVL-2)
+
+POST /claims (FNOL)                   : IDEMPOTENCY KEY + server dedup ⇒ replay/concurrent = ONE claim
+   (duplicate/retried write)            a create is retried ONLY under its key, never blindly (RES-3)
+
+CDC ──► NATS JetStream ──► Projector  : durable consumer + ack-AFTER-commit (no loss, at-least-once)
+   (dup / poison / crash)               idempotent upsert (event-id/LSN) ⇒ replay is a no-op (RES-4)
+                                        poison msg ⇒ DLQ subject (stream keeps flowing) + depth alert (RES-5/6)
+```
+
+**Golden rules:** (1) only **idempotent/read** ops auto-retry; a write retries **only** under its
+idempotency key. (2) a poison event **never** blocks the stream and **never** vanishes — it goes to the
+**DLQ** with an alert + a re-drive runbook. (3) an event is **acked only after** its projection commits.
+Each control ships **with the story it protects** (S003–S006) plus a chaos drill — not as a trailing phase.
+
 ## 7. Cross-references
 
 [Brief](../brief.md) · [PRD](../prd.md) · [NFR Register](./nfr-register.md) · [Threat Model](./threat-model.md) · [ADR log](./adr/000-index.md) · [Legacy-Core Modernization](https://andrelair-platform.github.io/minicloud-platform-docs/insurance-platform/legacy-core-modernization) · GlobalCore: `globalcore-legacy` · wrapper spec: `ktayl-integration/docs/legacy-wrapper-initiative-spec.md`
