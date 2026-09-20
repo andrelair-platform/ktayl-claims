@@ -5,8 +5,8 @@ Policy, command-catches, non-default conventions, observed pitfalls only.
 
 ## Policy
 - **ktayl-solution insurance IS** (business context), **not** the RNCP cert (that is **Retrieva**). Never label this repo's work as cert evidence.
-- **Planning-first / review gate:** the BMAD artefacts in `docs/` ([brief](./docs/brief.md), [prd](./docs/prd.md), [architecture/](./docs/architecture/)) are reviewed **before** implementation. **No Oracle is pulled and no `ktayl-legacy-core` repo is created until the plan + SA set are validated.**
-- **This product is a STRANGLER over a legacy Oracle core** (ADR-001). The legacy (`ktayl-legacy-core`) is the **authoritative record and is FROZEN** — you wrap/intercept/strangle it, you do **not** refactor its internals. Nothing (app/portal/AI) touches Oracle except the ACL + the Debezium connector.
+- **Planning-first / review gate:** the BMAD artefacts in `docs/` are reviewed **before** implementation. **No Oracle/Claims build until the plan + SA set are validated.**
+- **This product is a STRANGLER over the GlobalCore legacy** (ADR-001). The legacy = **GlobalCore** (`globalcore-legacy`), evolved to **Oracle + PL/SQL + the Claims domain**, Java 8 / **SOAP** / nightly **batch**, outside k8s — **NOT a new `ktayl-legacy-core` repo, NOT Postgres.** It is **FROZEN**: wrap/intercept/strangle, never edit its internals. The ACL reaches it via **SOAP**; Debezium reaches its Oracle for CDC; nothing else touches the legacy.
 - **Thin slice first** (Property, one claim type): FNOL → reserve → settle → closed through the ACL. Defer adjusters/subrogation/fraud/litigation (CLM-02..05). An Oracle→Postgres migration is a **later optional footnote**, never the goal (ADR-007).
 - **AI is read-only + governed** (ADR-005): approved SQL-tools behind the ACL (never the LLM emitting SQL at Oracle), RAG for docs, identity propagated, **PII Presidio-masked before any LLM**. No AI writes (parked #19).
 

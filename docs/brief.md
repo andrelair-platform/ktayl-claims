@@ -16,10 +16,11 @@ payments, SLA timers, a coverage check against the policy, and an immutable audi
 **no claims system** (#11 is an empty scaffold).
 
 **Architecture problem (the real point):** a real insurer does **not** build claims greenfield — it has a
-**legacy core that still works** (a GERAS-style Oracle claims/policy system, PL/SQL-heavy, authoritative
-for the historical book) that it **cannot casually replace**, and it modernizes *around* it. This product
-deliberately simulates that: it stands up a **legacy Oracle core** and wraps it with a **modern
-Anti-Corruption Layer / strangler**, rather than pretending the enterprise is greenfield.
+**legacy core that still works** (old, SOAP/batch, stored-procedure-heavy, on Oracle) that it **cannot
+casually replace**, and it modernizes *around* it. This product simulates that with a legacy engine we own
+and freeze — **GlobalCore** (`globalcore-legacy`: Java 8 / SOAP / batch, evolved to **Oracle** + the Claims
+domain) — wrapped by a **modern Anti-Corruption Layer / strangler**. Policy is already modern (live PAS), so
+the legacy delivers the domain we *need but haven't built* — **Claims**.
 
 ## Who it's for
 
@@ -37,9 +38,9 @@ system — the exact HDI shape — instead of a set of greenfield apps.
 
 ## Goals (v1)
 
-1. Stand up a **real, working legacy Oracle core** (`ktayl-legacy-core`, Oracle Free, outside k8s) holding
-   the authoritative claim/legacy-policy record with **PL/SQL** business logic (create-claim, reserve calc,
-   state transitions, audit trigger). It runs; it is **frozen** — wrapped, not refactored.
+1. Evolve **GlobalCore** (`globalcore-legacy`, our deliberately-legacy Java 8 / SOAP / batch carrier) to run
+   on **Oracle Free** + **PL/SQL** and hold the **Claims** domain (claims, reserves, payments) — the domain we
+   *need but haven't built*. It runs on traditional infra (outside k8s); it is **frozen** — wrapped, not edited.
 2. Wrap it with a modern **Anti-Corruption-Layer** service (`ktayl-claims`) exposing clean claims APIs — no
    app or AI ever touches Oracle directly.
 3. Propagate legacy changes as **events** via **CDC (Debezium → NATS)** — consumers react, they don't poll.
@@ -60,13 +61,13 @@ system — the exact HDI shape — instead of a set of greenfield apps.
 ## The thin slice (first thing to build)
 
 ```
-Legacy Oracle core (a few tables + PL/SQL: PROC_CREATE_CLAIM, FUNC_CALCULATE_RESERVE,
-   state-machine + TRG_CLAIM_AUDIT; seeded with a legacy policy book + customers)
-      ▲            │ CDC (Debezium)
-      │ ACL calls  ▼
-ktayl-claims (modern ACL/strangler): FNOL intake → PROC_CREATE_CLAIM → claim
-   → coverage check (reads legacy policy) → reserve → settle → closed
-   → every change → NATS event (CLAIM_CREATED / CLAIM_STATUS_CHANGED / RESERVE_ADJUSTED)
+GlobalCore (FROZEN legacy: Java 8 / SOAP `/ws` / nightly batch / Oracle + PL/SQL,
+   claims + reserves + stored procs; seeded)
+      ▲ SOAP (create/read)   │ CDC (Debezium on Oracle)
+      │                      ▼
+ktayl-claims (modern Claims = ACL/strangler): FNOL → SOAP CreateClaim → claim lands PENDING
+   (batch activates) → coverage check (PAS) → reserve → settle → closed
+   → every legacy change → NATS event (CLAIM_CREATED / CLAIM_STATUS_CHANGED / RESERVE_ADJUSTED)
       → a modern read-model (Postgres) powers the claims workbench
 ```
 
@@ -78,14 +79,14 @@ Pick **one LOB** (align with Underwriting's **Property**) and **one claim type**
 | Metric | v1 target signal |
 |---|---|
 | A claim runs FNOL→closed **through the wrapper**, never touching Oracle directly | end-to-end demo |
-| The legacy Oracle core holds the **authoritative** record + PL/SQL logic | claim + reserve created via `PROC_CREATE_CLAIM` |
+| **GlobalCore** (Oracle + PL/SQL) holds the **authoritative** record | claim created via GlobalCore's SOAP -> its `PROC_CREATE_CLAIM` |
 | Every legacy change becomes a **NATS event** via CDC | `CLAIM_STATUS_CHANGED` observed on NATS, no polling |
 | **Coverage check** reads the legacy policy through the ACL | FNOL rejects an out-of-cover claim |
 | **Immutable audit trail** on every state change | who/when/why queryable |
 
 ## Scope boundary & dependencies (contracts, not blockers)
 
-- **`ktayl-legacy-core`** (new, Oracle Free, outside k8s) — the system-of-record this product wraps.
+- **GlobalCore** (`globalcore-legacy`, evolved to Oracle Free + the Claims domain, outside k8s) — the frozen system-of-record this product wraps.
 - **`ktayl-policy-service` (live)** — the *modern* PAS; the legacy holds the historical policy book, PAS the
   new one; coverage checks read the legacy via the ACL (documented cross-read).
 - **`ktayl-integration` #25 / NATS** — hosts the CDC (Debezium→NATS) capability + ACL egress patterns.

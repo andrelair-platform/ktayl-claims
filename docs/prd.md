@@ -8,7 +8,7 @@
 ## 1. Vision
 
 A **claims capability** for the ktayl IS, built the way a real insurer modernizes: a **legacy Oracle core**
-(`ktayl-legacy-core`, GERAS-style, authoritative, PL/SQL) that **still works and stays**, wrapped by a
+(**GlobalCore** — Oracle + PL/SQL, SOAP, batch — authoritative) that **still works and stays**, wrapped by a
 modern **Anti-Corruption-Layer** service (`ktayl-claims`) that exposes clean APIs, publishes legacy changes
 as **CDC events on NATS**, and hosts all *new* claims capability — while nothing (app, portal, AI) touches
 Oracle directly.
@@ -28,16 +28,16 @@ Oracle directly.
 
 ⭐ = in the **v1 thin slice**. Full story decomposition: `bmad/stories/claims/` (CLM-01…05) + `docs/clm-v1-sprint-plan.md`.
 
-### Legacy core (`ktayl-legacy-core` — the system of record)
-- ⭐ **FR-L1** Oracle Free schema: `CUSTOMER`, `POLICY` (legacy book), `CLAIM`, `CLAIM_TRANSACTION`,
-  `CLAIM_RESERVE`, `PAYMENT`, `PRODUCT`, `BROKER`.
-- ⭐ **FR-L2** PL/SQL business logic: `PKG_CLAIMS` (`PROC_CREATE_CLAIM`, `FUNC_CALCULATE_RESERVE`), a claim
-  **state-machine** enforced in-DB, `TRG_CLAIM_AUDIT` (append-only audit on every change).
-- ⭐ **FR-L3** Seeded with a realistic legacy policy book + customers so coverage checks are real.
-- **FR-L4** The core is **frozen**: wrapped, intercepted, strangled — never refactored to "fix" it.
+### Legacy core (GlobalCore — the system of record)
+- ⭐ **FR-L1** Evolve **GlobalCore** to **Oracle Free** + the Claims schema: `CLAIM`, `CLAIM_RESERVE`,
+  `PAYMENT` + refs (`CUSTOMER`, `POLICY`, `PRODUCT`, `BROKER`).
+- ⭐ **FR-L2** **PL/SQL** business logic in GlobalCore: `PKG_CLAIMS` (`PROC_CREATE_CLAIM`,
+  `FUNC_CALCULATE_RESERVE`), a claim **state-machine** + append-only audit — reached **only via GlobalCore's SOAP API**.
+- ⭐ **FR-L3** Authentically legacy: **SOAP/XML only** (`/ws`), a create is **pending until the nightly batch** activates it; seeded so coverage checks are real.
+- **FR-L4** GlobalCore is **frozen**: wrapped/intercepted/strangled — never edited to add a modern feature.
 
 ### ACL / strangler (`ktayl-claims` — the modern service)
-- ⭐ **FR-A1** **FNOL intake** API → calls `PROC_CREATE_CLAIM` in the legacy → returns the claim.
+- ⭐ **FR-A1** **FNOL intake** API → **SOAP `CreateClaim`** to GlobalCore (which runs `PROC_CREATE_CLAIM`) → claim lands **pending**; translated to clean JSON.
 - ⭐ **FR-A2** **Coverage check** at FNOL: read the legacy `POLICY` via the ACL; reject out-of-cover.
 - ⭐ **FR-A3** Claim **lifecycle** through the ACL: `notified → under-assessment → reserved → settled/refused → closed` (+ reopen); each transition validated (legacy state-machine is authoritative).
 - ⭐ **FR-A4** **Reserve** set/adjust via the ACL (`FUNC_CALCULATE_RESERVE`); **payments** recorded.
@@ -82,8 +82,8 @@ Evidence accrues to **Regulatory & Compliance #15** control library. Cert: **BC0
 ## 5b. Technology stack (ADR-006)
 
 Per the [stack-selection rule](https://github.com/andrelair-platform/minicloud-gitops/blob/main/.claude/rules/tech-stack-selection.md):
-- **Legacy core:** **Oracle Database Free** (`…/database/free:latest-lite`) + **PL/SQL**, one container **outside k8s** (ADR-002).
-- **ACL/strangler:** **Java 21 + Spring Boot** (the enterprise-Oracle-integration classic; mature Oracle JDBC; the realistic "modern service wrapping Oracle" stack a bank/insurer would use) — *candidate; confirm at review vs Python+FastAPI*.
+- **Legacy:** **GlobalCore** (Java 8 / Spring / **SOAP** / batch) on **Oracle Database Free** (`…/database/free:latest-lite`) + **PL/SQL**, containers **outside k8s** (ADR-002).
+- **ACL/strangler:** **Java 21 + Spring Boot** (mature **SOAP client** (spring-ws/JAX-WS); the realistic "modern service wrapping a Java/SOAP/Oracle legacy" stack) — *candidate; confirm at review vs Python (FastAPI + zeep)*.
 - **CDC:** **Debezium** (Oracle connector) → **NATS** (Debezium Server sink). **Read-model:** **PostgreSQL**.
 - **Frontend (later):** Next.js + React.
 
@@ -95,7 +95,7 @@ Postgres read-model in-cluster. AI (later) via the existing LiteLLM gateway with
 
 ## 7. Dependencies
 
-`ktayl-legacy-core` (new) · `ktayl-policy-service` (live, historical policy read) · `ktayl-integration`/NATS
+**GlobalCore** (`globalcore-legacy`, evolved to Oracle+Claims) · `ktayl-policy-service` (live, coverage read) · `ktayl-integration`/NATS
 (CDC) · Compliance #15 · AI platform (governed) · Vault/ESO (legacy creds). See [Solution Architecture](./architecture/solution-architecture.md).
 
 ## 8. Out of scope (v1)

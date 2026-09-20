@@ -1,77 +1,82 @@
-# ADR Log — Claims / Legacy-Core (#11)
+# ADR Log — Claims (wrap over the GlobalCore legacy) (#11)
 
 > **BMAD/SA artefact.** Index of architecture decisions + rationale. Each: Status · Context · Decision ·
 > Consequences. **Status: DRAFT / Proposed — for review.**
 
 | ADR | Title | Status | Owner |
 |---|---|---|---|
-| [001](#adr-001) | Strangler Fig + Anti-Corruption Layer (wrap, don't replace) | Proposed | SA/TL |
-| [002](#adr-002) | Oracle Free, OUTSIDE Kubernetes (traditional infra) | Proposed | SA/TL |
-| [003](#adr-003) | CDC over polling — Debezium → NATS (not Kafka) | Proposed | SA/TL |
+| [001](#adr-001) | Strangler Fig + ACL over GlobalCore (wrap, don't edit) | Proposed | SA/TL |
+| [002](#adr-002) | Legacy = GlobalCore on Oracle Free, OUTSIDE k8s (not a new repo, not Postgres) | Proposed | SA/TL |
+| [003](#adr-003) | Wrap surface = SOAP→JSON (writes) + CDC Debezium→NATS (events); keep the batch async model | Proposed | SA/TL |
 | [004](#adr-004) | CQRS-lite read-model (Postgres) projected from CDC | Proposed | SA/TL |
 | [005](#adr-005) | AI reaches structured data only via ACL SQL-tools | Proposed | SA/TL |
-| [006](#adr-006) | Stack: legacy Oracle+PL/SQL · ACL Java/Spring Boot · Debezium · Postgres | Proposed | SA/TL |
+| [006](#adr-006) | Stack: GlobalCore Java8/SOAP/Oracle · ACL Java/Spring Boot · Debezium · Postgres | Proposed | SA/TL |
 | [007](#adr-007) | The Oracle→Postgres migration is a later, optional footnote | Proposed | SA/TL |
 
 ---
 
-## ADR-001 — Strangler Fig + Anti-Corruption Layer {#adr-001}
+## ADR-001 — Strangler Fig + ACL over GlobalCore {#adr-001}
 **Context.** A real insurer's claims run on a legacy core that still works and can't be casually replaced;
-modernization means wrapping it, not a rewrite (EA §2b; the ktayl *Strangler Fig / ACL* principle).
-**Decision.** Stand up a deliberate **legacy Oracle core** as the authoritative record; `ktayl-claims` is
-its **ACL/strangler**. The legacy is **frozen** (wrapped, intercepted, strangled — never refactored). No
-app/portal/AI writes around the ACL.
-**Consequences.** The IS becomes a credible enterprise-modernization system (the HDI shape), not greenfield.
-Cost: you must *understand* the legacy (PL/SQL) before wrapping — which is the point/skill. New capability is
-built modern in the ACL; the legacy shrinks in scope over time but keeps running.
+modernization means wrapping it, not a rewrite (EA §2b; the ktayl *Strangler Fig / ACL* principle). We own a
+deliberately-legacy carrier — **GlobalCore** — for exactly this.
+**Decision.** `ktayl-claims` is the modern Claims capability built **AS the ACL/strangler** over GlobalCore.
+GlobalCore is **frozen** — you never add a modern feature *inside* it (SOAP/schema/batch stay authentically
+legacy); you wrap it.
+**Consequences.** The IS gains a credible enterprise-modernization system (the HDI shape) *and* a real needed
+domain (Claims) at once. Cost: you must *understand* GlobalCore (SOAP contracts, PL/SQL, batch) before
+wrapping — which is the skill. New capability lives in the ACL.
 
-## ADR-002 — Oracle Free, outside Kubernetes {#adr-002}
-**Context.** Need a real Oracle without RAC/Exadata/licensing, on a resource-constrained cluster already
-strained by Longhorn.
-**Decision.** **Oracle Database Free** (`container-registry.oracle.com/database/free:latest-lite`; community
-mirror `gvenzl/oracle-free` as fallback), **one Docker container on the controller (or a node), OUTSIDE
-k3s** — like MinIO. In-cluster services reach it at `controller-ip:1521`.
-**Consequences.** Realistic ("legacy on traditional infra, modern platform on k8s"), and keeps ~2 GB Oracle
-+ its storage off the cluster (no Longhorn PVC). **Accepted:** the legacy has no HA (single instance) and
-adds a cross-boundary network hop; the controller disk is tight → **sizing/placement gated** in the Path-C
-architecture (may move to a worker's local disk). Not GitOps-managed — provisioned via a runbook.
+## ADR-002 — Legacy = GlobalCore on Oracle Free, outside k8s {#adr-002}
+**Context.** Policy is already modern (live PAS #6), so the legacy must be a domain we *need but haven't
+built* — **Claims**. The legacy engine already exists: **GlobalCore** (`globalcore-legacy`). Real **Oracle**
+experience is a required outcome.
+**Decision.** The legacy is **GlobalCore evolved to Oracle Free + PL/SQL** for the **Claims** domain — **not**
+a new `ktayl-legacy-core` repo, **not** Postgres. GlobalCore + its Oracle run as **Docker containers on the
+controller, OUTSIDE k3s** (like MinIO); the in-cluster ACL reaches its SOAP (`:8080`) and Debezium reaches
+its Oracle (`:1521`).
+**Consequences.** One legacy, on real Oracle, delivering Claims — realism + the Oracle credential, off the
+constrained cluster (no Longhorn). **Accepted:** single instance (no RAC/Data Guard); a cross-boundary hop;
+controller disk is tight → **sizing/placement gated** (may move to a worker's local disk). GlobalCore's v0
+was Postgres-pretending-to-be-Oracle → it evolves to real Oracle here.
 
-## ADR-003 — CDC over polling (Debezium → NATS) {#adr-003}
-**Context.** Modern services and analytics must react to legacy changes without polling Oracle (load + lag).
-**Decision.** **Debezium** captures legacy `CLAIM`/`CLAIM_RESERVE` changes and publishes to **NATS**
-(Debezium Server sink) — **not** Kafka (NATS is the platform backbone). Events are the downstream contract.
-**Consequences.** Real event-driven integration; downstream never reads the legacy directly. A new platform
-capability (`ktayl-integration`/IS Foundations) valuable beyond claims. Debezium on Oracle needs LogMiner/
-XStream config on the legacy — a documented setup, gated at the security review (privileged DB access).
+## ADR-003 — Wrap surface: SOAP→JSON + CDC; keep the batch {#adr-003}
+**Context.** GlobalCore's interfaces are authentically legacy: **SOAP/XML only** (`/ws`), and a create is
+**pending until a nightly batch** activates it. The wrap must honour that, not fake real-time.
+**Decision.** The ACL calls GlobalCore's **SOAP** for writes/reads (translating cryptic XML → clean JSON) and
+models the **async batch** (pending → activated) honestly. **Debezium** on GlobalCore's **Oracle** captures
+changes → **NATS** events (`CLAIM_CREATED`, `CLAIM_STATUS_CHANGED`, `RESERVE_ADJUSTED`) — **not** Kafka.
+**Consequences.** Teaches the real legacy-wrap (SOAP translation + async issuance + CDC), not a clean-DB
+fantasy. Two egress paths to the controller (SOAP :8080, Oracle CDC :1521), each least-privilege.
 
 ## ADR-004 — CQRS-lite read-model (Postgres) {#adr-004}
-**Context.** The workbench needs fast, rich reads; hammering Oracle for reads is both slow and a DoS surface (T10).
-**Decision.** A **PostgreSQL read-model** projected from the CDC events powers the workbench; the legacy is
-written via the ACL and read for authoritative-critical checks (coverage) only.
-**Consequences.** Reads scale off Oracle; the read-model is **disposable/rebuildable from CDC** (DR-2).
-Cost: eventual consistency (bounded by CDC lag) — accepted; authoritative-critical reads bypass it.
+**Context.** The workbench needs fast, rich reads; hammering the legacy (SOAP or Oracle) for reads is slow
+and a DoS surface.
+**Decision.** A **PostgreSQL read-model** projected from CDC events powers the workbench; the legacy is
+written via SOAP and read for authoritative-critical checks only.
+**Consequences.** Reads scale off the legacy; the read-model is **disposable/rebuildable from CDC** (DR).
+Cost: eventual consistency (bounded by CDC lag) — accepted.
 
 ## ADR-005 — AI via ACL SQL-tools only {#adr-005}
-**Context.** The LLM must never emit SQL at Oracle, nor bypass claim authorization (T4/T8/T9).
+**Context.** The LLM must never speak SOAP/SQL to the legacy, nor bypass claim authorization.
 **Decision.** AI reaches **structured** claims data only through **approved, parameterised SQL-tools behind
-the ACL** (permitted columns/rows), running **as the human's identity** (Authentik), with **PII masked
-before any LLM**; **documents** via RAG (Qdrant). **No AI writes in v1** (autonomous action = parked #19, high tier).
-**Consequences.** The AI can't become an authz bypass or an injection vector. Limited-tier AI-Act posture in v1.
+the ACL** (permitted columns/rows), as the **human's identity** (Authentik), **PII-masked before any LLM**;
+**documents** via RAG (Qdrant). **No AI writes in v1** (autonomous action = parked #19, high tier).
+**Consequences.** The AI can't become an authz bypass or an injection vector into the legacy. Limited-tier v1.
 
 ## ADR-006 — Technology stack {#adr-006}
-**Context.** Per the org stack-selection rule (best-fit per project). This domain is *wrapping Oracle* + a
+**Context.** Per the org stack-selection rule. This domain = *wrapping a Java/SOAP/Oracle legacy* + a
 transactional claims lifecycle.
-**Decision.** Legacy = **Oracle Free + PL/SQL**. ACL/strangler = **Java 21 + Spring Boot** — the realistic,
-mature enterprise-Oracle-integration stack (JDBC, transactions, the language a bank/insurer actually wraps
-Oracle in) and it adds Java to the LOB. CDC = **Debezium → NATS**. Read-model = **PostgreSQL**. Frontend
-(later) = Next.js + React. **Open at review:** Java/Spring vs Python+FastAPI — Spring for the transactional/
-Oracle realism; FastAPI if we want consistency with underwriting. **Confirm at the architecture gate.**
-**Consequences.** Java realism vs a heavier build than FastAPI for a solo dev; recorded as an open decision.
+**Decision.** Legacy engine = **GlobalCore** (Java 8 / Spring / SOAP, **Oracle Free** + PL/SQL). ACL/strangler
+= **Java 21 + Spring Boot** — mature SOAP client (spring-ws / JAX-WS) + JPA, and the realistic enterprise-
+legacy-wrap stack; adds Java to the LOB. CDC = **Debezium → NATS**. Read-model = **PostgreSQL**. Frontend
+(later) = Next.js. **Open at review:** Java/Spring vs Python (FastAPI + zeep for SOAP) for the ACL — Spring
+for the SOAP/Oracle realism; Python if we want consistency with underwriting. **Confirm at the arch gate.**
+**Consequences.** Java realism (esp. SOAP) vs a heavier solo build; recorded as an open decision.
 
 ## ADR-007 — Migration is a later, optional footnote {#adr-007}
-**Context.** The essay/pattern often ends in "migrate off Oracle" — but the *point* is the legacy stays.
-**Decision.** The legacy Oracle core is **permanent** in this simulation. A **bounded, non-critical**
-Oracle→Postgres migration (e.g. `BROKER_NOTES`) may be done **later** purely to demonstrate the technique —
-never the mission-critical core, never the goal.
+**Context.** The pattern often ends in "migrate off Oracle" — but the point is the legacy stays.
+**Decision.** GlobalCore + Oracle are **permanent** in this simulation. A **bounded, non-critical**
+Oracle→Postgres migration may be done **later** purely to demonstrate the technique — never the core, never
+the goal.
 **Consequences.** Keeps the hybrid honest (wrapping is the steady state). The migration, if done, is a small
-capstone exercise, not v1 scope.
+capstone, not v1 scope.

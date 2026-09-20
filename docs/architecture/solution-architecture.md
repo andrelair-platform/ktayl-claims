@@ -1,4 +1,4 @@
-# Solution Architecture — Claims (strangler over a legacy Oracle core) (#11)
+# Solution Architecture — Claims (modern wrap over the GlobalCore legacy) (#11)
 
 > **BMAD/SA artefact — the technical spine.** Path-C. Assembles the C4 views, the
 > [NFR Register](./nfr-register.md), the [Threat Model](./threat-model.md) and the [ADR log](./adr/000-index.md).
@@ -7,24 +7,26 @@
 
 ## 1. Overview
 
-`ktayl-claims` is the modern **Anti-Corruption Layer / strangler** over a deliberate **legacy Oracle core**
-(`ktayl-legacy-core`). The legacy holds the authoritative claim/legacy-policy record and its PL/SQL business
-logic and **stays** (Strangler Fig — wrapped, not replaced). The ACL exposes clean claims APIs, **CDC
-(Debezium) publishes legacy changes to NATS**, and a **Postgres read-model** projects those events to power
-the workbench (CQRS-lite, keeping read load off Oracle). Nothing but the ACL and the CDC connector touches
-Oracle. Delivery follows the platform GitOps + Kargo model.
+`ktayl-claims` is the **modern Claims capability, built AS the Anti-Corruption Layer / strangler** over the
+**GlobalCore** legacy (`globalcore-legacy`). GlobalCore is a deliberately-legacy carrier we own and
+**freeze** — **Java 8 · Spring · SOAP · nightly batch · stored procedures · Oracle · outside k8s** — evolved
+to hold the **Claims** domain (the domain we *need but haven't built*; Policy is already modern in the live
+PAS). Wrapping GlobalCore is how modern Claims is *delivered*: the ACL translates **SOAP→JSON**, models the
+**async batch** (create → pending → activated), publishes legacy changes as **CDC events on NATS**, and a
+**Postgres read-model** powers the workbench. Nothing but the ACL (SOAP) and the CDC connector (Oracle)
+touches the legacy.
 
-**Technology stack** (ADR-006): legacy = **Oracle Free + PL/SQL** (container, outside k8s); ACL =
-**Java 21 + Spring Boot** (candidate — the realistic enterprise-Oracle-wrapping stack; confirm vs FastAPI);
-CDC = **Debezium → NATS**; read-model = **PostgreSQL**; frontend (later) = Next.js.
+**Technology stack** (ADR-006): legacy engine = **GlobalCore** (Java 8 / Spring / SOAP, **Oracle Free** +
+PL/SQL); ACL/strangler = **Java 21 + Spring Boot** (candidate — mature SOAP client + JPA; confirm vs FastAPI);
+CDC = **Debezium (Oracle) → NATS**; read-model = **PostgreSQL**; frontend (later) = Next.js.
 
-**Decisions of record** (full log in [ADRs](./adr/000-index.md)):
-- **ADR-001** — **Strangler Fig + ACL**: the legacy is authoritative and frozen; modern services wrap it, never write around it.
-- **ADR-002** — **Oracle Free, OUTSIDE k8s** (container on the controller/a node) — realism + off the constrained cluster.
-- **ADR-003** — **CDC over polling** (Debezium → **NATS**, not Kafka); events are the downstream contract.
-- **ADR-004** — **CQRS-lite read-model** (Postgres) projected from CDC; reads never hit Oracle.
-- **ADR-005** — **AI reaches structured data only via approved ACL SQL-tools** (RAG for docs); identity propagated; no autonomous action.
-- **ADR-006** — stack (above). **ADR-007** — the bounded migration is a *later, optional* footnote; the legacy stays.
+**Decisions of record** ([ADRs](./adr/000-index.md)):
+- **ADR-001** — **Strangler Fig + ACL** over GlobalCore; the legacy is authoritative and **frozen** (never edited to ease a modern feature).
+- **ADR-002** — legacy = **GlobalCore (existing repo) on Oracle Free, OUTSIDE k8s** — not a new `ktayl-legacy-core`, not Postgres.
+- **ADR-003** — the wrap surface is **SOAP→JSON (writes) + CDC Debezium→NATS (events)**; the batch async model is preserved, not hidden.
+- **ADR-004** — **CQRS-lite read-model** (Postgres) projected from CDC; reads never hit the legacy.
+- **ADR-005** — **AI via approved ACL SQL-tools** (RAG for docs); identity-propagated, PII-masked, no AI writes.
+- **ADR-006** — stack. **ADR-007** — an Oracle→Postgres migration is a *later, optional* footnote; the legacy stays.
 
 ## 2. C4 — Level 1: System Context
 
@@ -33,21 +35,20 @@ flowchart LR
   handler(["Claims handler<br/>(primary user)"])
   compliance(["Compliance / SIU"])
 
-  claims["ktayl-claims<br/>ACL / strangler · lifecycle · workbench"]
+  claims["ktayl-claims<br/>modern Claims = ACL/strangler · workbench"]
 
-  legacy["ktayl-legacy-core<br/>Oracle Free (outside k8s) — authoritative claim/legacy-policy + PL/SQL"]
-  pas["ktayl-policy-service<br/>modern PAS (LIVE) — new policy book"]
+  legacy["GlobalCore (globalcore-legacy)<br/>Java 8 · SOAP · batch · Oracle — FROZEN legacy Claims core"]
+  pas["ktayl-policy-service<br/>modern PAS (LIVE) — policy is already modern"]
   bus["NATS<br/>event backbone"]
   ai["LiteLLM + vLLM · Qdrant<br/>governed AI (read-only in v1)"]
   down["Risk · Analytics · Reinsurance<br/>downstream (via events)"]
 
   handler -->|"FNOL, assess, reserve, settle"| claims
   compliance -->|"audit, fraud, ALFA"| claims
-  claims -->|"ACL calls + PL/SQL (create claim, reserve)"| legacy
-  claims -->|"coverage read (historical book)"| legacy
-  claims -->|"coverage read (new book)"| pas
-  legacy -->|"CDC (Debezium) change events"| bus
-  claims -->|"publishes lifecycle events"| bus
+  claims -->|"SOAP calls (create/read claim) → JSON"| legacy
+  claims -->|"coverage read (policy)"| pas
+  legacy -->|"CDC (Debezium on Oracle) change events"| bus
+  claims -->|"lifecycle events"| bus
   bus -->|"consumed downstream"| down
   claims -->|"approved SQL-tools + RAG (identity-propagated, PII-masked)"| ai
 
@@ -67,12 +68,14 @@ flowchart LR
 flowchart TB
   handler(["Claims handler"])
 
-  subgraph LEG["ktayl-legacy-core — Oracle Free (OUTSIDE k8s, on the controller)"]
-    ora[("Oracle Free · FREEPDB1<br/>CLAIM · CLAIM_RESERVE · PAYMENT · POLICY(legacy) · CUSTOMER<br/>PKG_CLAIMS · FUNC_CALCULATE_RESERVE · TRG_CLAIM_AUDIT")]
+  subgraph LEG["GlobalCore — FROZEN legacy (OUTSIDE k8s, on the controller)"]
+    app["GlobalCore app · Java 8 / Spring<br/>SOAP /ws (WSDL) · nightly batch (pending→active)"]
+    ora[("Oracle Free · PL/SQL<br/>CLAIM · CLAIM_RESERVE · PAYMENT · refs · stored procs")]
+    app --> ora
   end
 
   subgraph S["ktayl-claims (system boundary, in k8s)"]
-    acl["ACL / API · Java 21 + Spring Boot<br/>FNOL · lifecycle · reserve · coverage-check · authz/audit"]
+    acl["ACL / API · Java 21 + Spring Boot<br/>SOAP→JSON · FNOL · lifecycle · authz/audit"]
     proj["Projector · CDC consumer<br/>events → read-model"]
     rm[("PostgreSQL read-model<br/>claims workbench projection (CQRS-lite)")]
     web["Claims workbench · Next.js (later)"]
@@ -85,8 +88,8 @@ flowchart TB
 
   handler -->|"HTTPS / OIDC"| web
   web --> acl
-  acl -->|"JDBC + PL/SQL (writes + coverage read)"| ora
-  acl -->|"coverage read (new book)"| pas
+  acl -->|"SOAP (create/read claim)"| app
+  acl -->|"coverage read"| pas
   ora -->|"change data"| cdc
   cdc -->|"CLAIM_* events"| bus
   bus --> proj
@@ -97,7 +100,7 @@ flowchart TB
 
   classDef legacy fill:#8B4513,stroke:#5c2e0e,color:#fff
   classDef ext fill:#e6e6e6,stroke:#999,color:#111
-  class ora legacy
+  class app,ora legacy
   class cdc,bus,pas,ai ext
 ```
 
@@ -105,8 +108,10 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-  subgraph CTRL["Controller (traditional infra, OUTSIDE k8s)"]
-    ora[("Oracle Free container<br/>Docker · :1521 · data volume + backup")]
+  subgraph CTRL["Controller (traditional infra, OUTSIDE k8s — docker compose)"]
+    app["GlobalCore · Java 8 container · SOAP :8080 + batch"]
+    ora[("Oracle Free container · :1521 · data volume + backup")]
+    app --> ora
   end
   subgraph K["minicloud k3s cluster (GitOps)"]
     subgraph NS["namespace: claims (dev + prod)"]
@@ -121,38 +126,39 @@ flowchart TB
       ai["LiteLLM / vLLM (ai ns)"]
     end
   end
-  acl -->|"egress allow → controller:1521 only"| ora
-  cdc -->|"LogMiner/XStream → NATS"| ora
+  acl -->|"egress allow → controller:8080 (SOAP) only"| app
+  cdc -->|"egress allow → controller:1521 (Oracle CDC) only"| ora
   cdc --> bus
   proj --> bus
   acl --> pas
 ```
 
 **Delivery:** GitOps (ArgoCD) + **Kargo** dev→prod for the in-cluster services (ACL, projector), Helm
-wrapper-chart golden path; Authentik OIDC, **ESO/Vault** for the Oracle creds (`secret/platform/oracle-legacy`),
-cert-manager TLS, **default-deny NetworkPolicy with an explicit egress allow to `controller-ip:1521` only**.
-The Oracle container itself is **not** GitOps-managed (traditional infra) — provisioned via a documented
-runbook, like MinIO.
+wrapper-chart golden path; Authentik OIDC; **ESO/Vault** for the Oracle CDC creds (`secret/platform/oracle-legacy`);
+cert-manager TLS; **default-deny NetworkPolicy** with explicit egress: the **ACL → GlobalCore SOAP
+(controller:8080)** and **Debezium → Oracle (controller:1521)** only — nothing else in-cluster reaches the
+legacy. GlobalCore + Oracle are **not** GitOps-managed (traditional infra, docker-compose runbook — like MinIO).
 
 ## 5. Component responsibilities
 
 | Component | Stack | Owns | Notes |
 |---|---|---|---|
-| **Legacy core** | Oracle Free + PL/SQL | authoritative claim/legacy-policy record + business rules | frozen; wrapped not refactored (ADR-001) |
-| **ACL / API** | Java 21 + Spring Boot | FNOL, lifecycle, reserve, coverage-check, authz, audit, AI tools | the only writer to the legacy |
-| **Debezium** | Oracle connector → NATS | capture legacy changes as events | ADR-003; not Kafka |
+| **GlobalCore** | Java 8 / SOAP / batch / **Oracle + PL/SQL** | authoritative claim record + business rules (reserve calc, state) | **frozen** — wrapped not edited (ADR-001) |
+| **ACL / API** | Java 21 + Spring Boot | SOAP→JSON, FNOL, lifecycle, coverage-check, authz, audit, AI tools | the only SOAP client of GlobalCore |
+| **Debezium** | Oracle connector → NATS | capture legacy Oracle changes as events | ADR-003; not Kafka |
 | **Projector** | CDC consumer | events → read-model | ADR-004 |
-| **Read-model** | PostgreSQL | workbench projection | reads never hit Oracle |
+| **Read-model** | PostgreSQL | workbench projection | reads never hit the legacy |
 
 ## 6. Key data flows
 
-1. **FNOL:** handler → ACL → **coverage check** (legacy `POLICY`) → `PROC_CREATE_CLAIM` (legacy) →
-   `TRG_CLAIM_AUDIT` records it → Debezium emits `CLAIM_CREATED` → projector updates the read-model.
-2. **Reserve:** ACL → `FUNC_CALCULATE_RESERVE` (legacy) → `RESERVE_ADJUSTED` event → read-model + downstream.
-3. **Settle/close:** ACL drives the legacy state-machine → `CLAIM_STATUS_CHANGED` / `CLAIM_PAID` events.
-4. **AI (v1, read-only):** handler question → ACL SQL-tool (approved columns, identity-scoped, PII-masked) →
-   read-model/legacy; document questions → RAG (Qdrant). Never the LLM emitting SQL at Oracle.
+1. **FNOL:** handler → ACL → **coverage check** (PAS) → **SOAP `CreateClaim`** to GlobalCore → claim lands
+   **`pending`**; GlobalCore's PL/SQL + batch own the record; Debezium emits `CLAIM_CREATED` → projector updates
+   the read-model. The ACL models the async "pending until batch activates" honestly (no fake real-time).
+2. **Reserve / lifecycle:** ACL → SOAP ops → GlobalCore stored procs drive reserve + state; `RESERVE_ADJUSTED`
+   / `CLAIM_STATUS_CHANGED` events flow via CDC.
+3. **AI (v1, read-only):** handler question → ACL SQL-tool (approved columns, identity-scoped, PII-masked) →
+   read-model; document questions → RAG (Qdrant). Never the LLM speaking SOAP or SQL to the legacy.
 
 ## 7. Cross-references
 
-[Brief](../brief.md) · [PRD](../prd.md) · [NFR Register](./nfr-register.md) · [Threat Model](./threat-model.md) · [ADR log](./adr/000-index.md) · [Legacy-Core Modernization](https://andrelair-platform.github.io/minicloud-platform-docs/insurance-platform/legacy-core-modernization)
+[Brief](../brief.md) · [PRD](../prd.md) · [NFR Register](./nfr-register.md) · [Threat Model](./threat-model.md) · [ADR log](./adr/000-index.md) · [Legacy-Core Modernization](https://andrelair-platform.github.io/minicloud-platform-docs/insurance-platform/legacy-core-modernization) · GlobalCore: `globalcore-legacy` · wrapper spec: `ktayl-integration/docs/legacy-wrapper-initiative-spec.md`

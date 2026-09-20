@@ -17,7 +17,7 @@ against the legacy policy, an immutable audit trail, and legacy changes surfacin
 Each: parent epic · priority · estimate · acceptance criteria (happy + failure) · DoD.
 
 ### S001 — Legacy Oracle core: schema + seed  · [CLM-01 / legacy] · P1 · 5
-Stand up `ktayl-legacy-core` (Oracle Free container, outside k8s) with the claim/legacy-policy schema, seeded.
+Evolve **GlobalCore** (`globalcore-legacy`) to **Oracle Free** + the **Claims** schema (claims/reserves/payments + refs), seeded; keep it SOAP/batch/frozen, outside k8s.
 - **AC** ✓ Oracle Free runs (controller/node, `:1521`, `FREEPDB1`); ✓ `CUSTOMER/POLICY/CLAIM/CLAIM_RESERVE/PAYMENT` created; ✓ seeded with a Property policy book + customers.
 - **AC (fail)** ✗ creds are a **least-privilege app user** (not SYS/SYSTEM); ✗ creds come from **Vault/ESO**, none in Git.
 - **DoD** provisioning runbook (not GitOps); data volume + backup to MinIO; disk sizing confirmed (ADR-002 gate).
@@ -74,5 +74,5 @@ plan + the SA set are validated** — same discipline as Underwriting #12.
 
 ## After validation
 1. You validate this + the SA set (and settle the 2 decisions).
-2. Create **`ktayl-legacy-core`** (member repo of the Claims product) + write `bmad/stories/claims/clm-v1-slice/` (S001–S007) → sync to board **#11**.
+2. Evolve **GlobalCore** (`globalcore-legacy`) to Oracle + Claims + write `bmad/stories/claims/clm-v1-slice/` (S001–S007) → sync to board **#11**. No *new* legacy repo.
 3. Build in sequence — legacy runs first, security gate (T4/T5/T8) enforced.

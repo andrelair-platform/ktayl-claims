@@ -9,7 +9,7 @@
 ```
 [Claims handler] ─(1)─▶ [Claims workbench] ─(2)─▶ [ACL / API] ─(3)─▶ [read-model Postgres]
                                                       │
-                                       (4) JDBC+PL/SQL │──▶ [Oracle Free  ·  OUTSIDE k8s, controller]
+                                       (4) SOAP        │──▶ [GlobalCore (SOAP+Oracle) · OUTSIDE k8s, controller]
                                                       │
                                        (5) AI tools    │──▶ [Presidio] ─▶ [LiteLLM → vLLM]   (egress)
                                                       │
