@@ -83,7 +83,7 @@ Evidence accrues to **Regulatory & Compliance #15** control library. Cert: **BC0
 
 Per the [stack-selection rule](https://github.com/andrelair-platform/minicloud-gitops/blob/main/.claude/rules/tech-stack-selection.md):
 - **Legacy:** **GlobalCore** (Java 8 / Spring / **SOAP** / batch) on **Oracle Database Free** (`…/database/free:latest-lite`) + **PL/SQL**, containers **outside k8s** (ADR-002).
-- **ACL/strangler:** **Java 21 + Spring Boot** (mature **SOAP client** (spring-ws/JAX-WS); the realistic "modern service wrapping a Java/SOAP/Oracle legacy" stack) — *candidate; confirm at review vs Python (FastAPI + zeep)*.
+- **ACL/strangler:** **Java 21 + Spring Boot** (mature **SOAP client** (spring-ws/JAX-WS); the realistic "modern service wrapping a Java/SOAP/Oracle legacy" stack) — **decided** (owner, 2026-09-20; Python FastAPI + zeep considered and rejected — SOAP/Oracle realism is the point). See ADR-006.
 - **CDC:** **Debezium** (Oracle connector) → **NATS** (Debezium Server sink). **Read-model:** **PostgreSQL**.
 - **Frontend (later):** Next.js + React.
 

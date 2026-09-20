@@ -66,13 +66,14 @@ S006 (reads) → S007 (AI, optional).**
 | Architecture spine + C4 + ADRs | ✅ [Solution Architecture](./architecture/solution-architecture.md) + [ADRs](./architecture/adr/000-index.md) |
 | Threat model (boundary change) | ✅ [Threat Model](./architecture/threat-model.md) — T4/T8 (AI PII) + T5 (legacy egress/least-priv) = the security-gate blockers |
 | Scope disciplined (thin slice, deferrals explicit) | ✅ one LOB, lifecycle spine only; adjusters/subrogation/fraud/litigation deferred; migration a later footnote |
-| **Open decisions for the owner** | ⚠️ **(1)** ACL stack — **Java/Spring Boot** (Oracle realism) vs **Python/FastAPI** (consistency w/ underwriting), ADR-006; **(2)** Oracle placement — controller vs a worker node (disk gate, ADR-002) |
+| ACL stack | ✅ **resolved — Java 21 + Spring Boot** (mature SOAP client + Oracle realism), ADR-006 |
+| Oracle placement | ✅ **resolved — on the controller** (Docker, outside k8s, like MinIO), ADR-002 — with a disk-monitoring caveat (controller ~98 G, MinIO ~33 G) |
 
-**Verdict: CONCERNS → PASS on two owner decisions.** The plan is implementation-ready once you settle
-(1) the ACL stack and (2) the Oracle placement. **No Oracle is pulled and no repo is created until this
-plan + the SA set are validated** — same discipline as Underwriting #12.
+**Verdict: PASS.** Both owner decisions are settled (ACL = Java/Spring Boot; Oracle on the controller).
+The plan is **implementation-ready**. **Disk gate (operational, not a blocker):** Oracle Free adds ~2–6 GB
+on the controller — size the data volume, add a disk alert, and be ready to relocate the container to a
+worker's local disk if headroom tightens.
 
-## After validation
-1. You validate this + the SA set (and settle the 2 decisions).
-2. Evolve **GlobalCore** (`globalcore-legacy`) to Oracle + Claims + write `bmad/stories/claims/clm-v1-slice/` (S001–S007) → sync to board **#11**. No *new* legacy repo.
-3. Build in sequence — legacy runs first, security gate (T4/T5/T8) enforced.
+## After validation (decisions settled — ready on your merge)
+1. Evolve **GlobalCore** (`globalcore-legacy`) to **Oracle Free (on the controller) + PL/SQL + the Claims domain** + write `bmad/stories/claims/clm-v1-slice/` (S001–S007) → sync to board **#11**. No *new* legacy repo.
+2. Build the wrap (**Java 21 + Spring Boot ACL**) in sequence — legacy runs first, security gate (T4/T5/T8) enforced.

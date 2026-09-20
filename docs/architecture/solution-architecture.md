@@ -17,7 +17,7 @@ PAS). Wrapping GlobalCore is how modern Claims is *delivered*: the ACL translate
 touches the legacy.
 
 **Technology stack** (ADR-006): legacy engine = **GlobalCore** (Java 8 / Spring / SOAP, **Oracle Free** +
-PL/SQL); ACL/strangler = **Java 21 + Spring Boot** (candidate — mature SOAP client + JPA; confirm vs FastAPI);
+PL/SQL); ACL/strangler = **Java 21 + Spring Boot** (decided — mature SOAP client + JPA over Oracle; FastAPI rejected);
 CDC = **Debezium (Oracle) → NATS**; read-model = **PostgreSQL**; frontend (later) = Next.js.
 
 **Decisions of record** ([ADRs](./adr/000-index.md)):

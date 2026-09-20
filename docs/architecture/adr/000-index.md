@@ -6,11 +6,11 @@
 | ADR | Title | Status | Owner |
 |---|---|---|---|
 | [001](#adr-001) | Strangler Fig + ACL over GlobalCore (wrap, don't edit) | Proposed | SA/TL |
-| [002](#adr-002) | Legacy = GlobalCore on Oracle Free, OUTSIDE k8s (not a new repo, not Postgres) | Proposed | SA/TL |
+| [002](#adr-002) | Legacy = GlobalCore on Oracle Free, OUTSIDE k8s (not a new repo, not Postgres) | Accepted | SA/TL |
 | [003](#adr-003) | Wrap surface = SOAP→JSON (writes) + CDC Debezium→NATS (events); keep the batch async model | Proposed | SA/TL |
 | [004](#adr-004) | CQRS-lite read-model (Postgres) projected from CDC | Proposed | SA/TL |
 | [005](#adr-005) | AI reaches structured data only via ACL SQL-tools | Proposed | SA/TL |
-| [006](#adr-006) | Stack: GlobalCore Java8/SOAP/Oracle · ACL Java/Spring Boot · Debezium · Postgres | Proposed | SA/TL |
+| [006](#adr-006) | Stack: GlobalCore Java8/SOAP/Oracle · ACL Java/Spring Boot · Debezium · Postgres | Accepted | SA/TL |
 | [007](#adr-007) | The Oracle→Postgres migration is a later, optional footnote | Proposed | SA/TL |
 
 ---
@@ -32,12 +32,30 @@ built* — **Claims**. The legacy engine already exists: **GlobalCore** (`global
 experience is a required outcome.
 **Decision.** The legacy is **GlobalCore evolved to Oracle Free + PL/SQL** for the **Claims** domain — **not**
 a new `ktayl-legacy-core` repo, **not** Postgres. GlobalCore + its Oracle run as **Docker containers on the
-controller, OUTSIDE k3s** (like MinIO); the in-cluster ACL reaches its SOAP (`:8080`) and Debezium reaches
-its Oracle (`:1521`).
+controller, OUTSIDE k3s** (like MinIO) — **decided**; the in-cluster ACL reaches its SOAP (`:8080`) and
+Debezium reaches its Oracle (`:1521`).
 **Consequences.** One legacy, on real Oracle, delivering Claims — realism + the Oracle credential, off the
-constrained cluster (no Longhorn). **Accepted:** single instance (no RAC/Data Guard); a cross-boundary hop;
-controller disk is tight → **sizing/placement gated** (may move to a worker's local disk). GlobalCore's v0
-was Postgres-pretending-to-be-Oracle → it evolves to real Oracle here.
+constrained cluster (no Longhorn). **Accepted:** single instance (no RAC/Data Guard); a cross-boundary hop.
+
+**Placement options (same access model either way).** GlobalCore runs as a plain `docker compose` (Oracle
+`:1521` + SOAP app `:8080`) on a host reachable on the internal LAN (`10.0.0.0/24`); in-cluster consumers
+(the ACL, Debezium) reach it by IP:port, gated by a default-deny egress netpol. Two valid hosts:
+- **(a) The controller (`10.0.0.1`)** — simplest, alongside MinIO/MAAS. *Caveat, not a blocker:* the
+  controller disk is tight (~98 G, MinIO ~33 G) → size the Oracle data volume, add a disk alert.
+- **(b) A worker node's local disk (preferred if the controller tightens)** — e.g. a storage worker with
+  headroom; **still outside k3s** (its own `docker compose`, not a pod), still on the LAN, so the access
+  model, egress netpol, and CDC path are **identical** — it just spreads load off the controller and gives
+  Oracle a dedicated local disk (no Longhorn). Start on (a); relocate to (b) the moment controller headroom
+  is the binding constraint.
+
+**Rejected alternative — OCI "Always Free" Oracle.** *Autonomous DB (ATP)* is real Oracle + PL/SQL but
+**managed** → no LogMiner/SYSDBA, so Debezium CDC (S005) is impossible (Oracle's path there is paid
+GoldenGate). *A free VM* doesn't fit either: the generous free box is **Ampere ARM64** but Oracle DB Free
+is **x86-64 only** (emulation = unusable DB speed), and the free x86 VMs are 1 GB RAM. Self-managed + local
+is the only option that gives x86 + enough RAM + full LogMiner/PL/SQL control. OCI ATP stays a *future,
+optional* variant only if we ever drop the Debezium-LogMiner requirement.
+
+GlobalCore's v0 was Postgres-pretending-to-be-Oracle → it evolves to real Oracle here.
 
 ## ADR-003 — Wrap surface: SOAP→JSON + CDC; keep the batch {#adr-003}
 **Context.** GlobalCore's interfaces are authentically legacy: **SOAP/XML only** (`/ws`), and a create is
@@ -67,11 +85,13 @@ the ACL** (permitted columns/rows), as the **human's identity** (Authentik), **P
 **Context.** Per the org stack-selection rule. This domain = *wrapping a Java/SOAP/Oracle legacy* + a
 transactional claims lifecycle.
 **Decision.** Legacy engine = **GlobalCore** (Java 8 / Spring / SOAP, **Oracle Free** + PL/SQL). ACL/strangler
-= **Java 21 + Spring Boot** — mature SOAP client (spring-ws / JAX-WS) + JPA, and the realistic enterprise-
-legacy-wrap stack; adds Java to the LOB. CDC = **Debezium → NATS**. Read-model = **PostgreSQL**. Frontend
-(later) = Next.js. **Open at review:** Java/Spring vs Python (FastAPI + zeep for SOAP) for the ACL — Spring
-for the SOAP/Oracle realism; Python if we want consistency with underwriting. **Confirm at the arch gate.**
-**Consequences.** Java realism (esp. SOAP) vs a heavier solo build; recorded as an open decision.
+= **Java 21 + Spring Boot — decided** (owner, 2026-09-20): mature SOAP client (spring-ws / JAX-WS) + JPA over
+Oracle, the realistic enterprise-legacy-wrap stack, and it adds Java to the LOB. Python (FastAPI + zeep) was
+considered for consistency with underwriting and **rejected** — the SOAP/Oracle realism is the point of this
+build, and Spring is the stronger fit for it. CDC = **Debezium → NATS**. Read-model = **PostgreSQL**. Frontend
+(later) = Next.js.
+**Consequences.** Java realism (esp. SOAP + Oracle) at the cost of a heavier solo build than a Python ACL —
+accepted deliberately. The stack is settled; no open decision remains at the arch gate.
 
 ## ADR-007 — Migration is a later, optional footnote {#adr-007}
 **Context.** The pattern often ends in "migrate off Oracle" — but the point is the legacy stays.
