@@ -5,3 +5,6 @@ _bmad-output/
 *.log
 dist/
 build/
+# Java / Maven
+target/
+*.class
