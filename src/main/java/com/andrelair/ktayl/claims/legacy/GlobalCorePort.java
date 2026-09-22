@@ -1,5 +1,8 @@
 package com.andrelair.ktayl.claims.legacy;
 
+import com.andrelair.ktayl.claims.domain.Claim;
+
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Optional;
 
@@ -21,4 +24,13 @@ public interface GlobalCorePort {
      * allocates the claim number and the initial state. Returns the allocated claim number.
      */
     String createClaim(String policyNumber, LocalDate lossDate, String peril, String claimantName);
+
+    /** Read a claim's current state. {@code Optional.empty()} ⇒ unknown claim. */
+    Optional<Claim> findClaim(String claimNumber);
+
+    /** Set/adjust the reserve (records history) and drive the claim to RESERVED (S004). */
+    void reserve(String claimNumber, BigDecimal amount);
+
+    /** Record a settlement payment and drive the claim to SETTLED (S004). */
+    void settle(String claimNumber, BigDecimal amount);
 }
