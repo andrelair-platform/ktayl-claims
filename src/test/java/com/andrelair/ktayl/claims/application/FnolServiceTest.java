@@ -35,6 +35,22 @@ class FnolServiceTest {
         public String createClaim(String p, LocalDate d, String peril, String who) {
             return "CLM-1-%06d".formatted(createCalls.incrementAndGet());
         }
+
+        // S004 lifecycle methods — not exercised by the FNOL tests
+        @Override
+        public java.util.Optional<com.andrelair.ktayl.claims.domain.Claim> findClaim(String claimNumber) {
+            return java.util.Optional.empty();
+        }
+
+        @Override
+        public void reserve(String claimNumber, java.math.BigDecimal amount) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void settle(String claimNumber, java.math.BigDecimal amount) {
+            throw new UnsupportedOperationException();
+        }
     };
 
     private final FnolService service = new FnolService(legacy, new InMemoryIdempotencyStore());
