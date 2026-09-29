@@ -39,12 +39,18 @@
       <artifactId>spring-boot-starter-validation</artifactId>
     </dependency>
 
-    <!-- Stack per ADR-006 — wired in as the slice is built:
-         · spring-ws / JAX-WS  → SOAP client to GlobalCore (S003/S004)
-         · spring-boot-starter-data-jpa + ojdbc / Oracle read-critical checks (S004)
-         · spring-boot-starter-data-jpa + PostgreSQL → CQRS read-model (S006)
-         · NATS client → CDC event consumer (S005/S006)
-         Kept out of v0 so the app boots with no external datastore. -->
+    <!-- Slice B (ADR-006): SOAP client to the live GlobalCore legacy. spring-ws WebServiceTemplate +
+         a Jaxb2Marshaller over the client stubs generated from the SAME globalcore.xsd. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-web-services</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.glassfish.jaxb</groupId>
+      <artifactId>jaxb-runtime</artifactId>
+    </dependency>
+
+    <!-- Later slices (kept out until built): JPA + PostgreSQL (CQRS read-model, Slice D); NATS (CDC consumer, Slice C). -->
 
     <dependency>
       <groupId>org.springframework.boot</groupId>
@@ -58,6 +64,23 @@
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
+      </plugin>
+      <!-- Generate the SOAP client stubs from the shared globalcore.xsd (into ...legacy.gen). -->
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>jaxb2-maven-plugin</artifactId>
+        <version>3.2.0</version>
+        <executions>
+          <execution>
+            <id>xjc</id>
+            <goals><goal>xjc</goal></goals>
+          </execution>
+        </executions>
+        <configuration>
+          <sources><source>src/main/resources/xsd/globalcore.xsd</source></sources>
+          <packageName>com.andrelair.ktayl.claims.legacy.gen</packageName>
+          <clearOutputDir>false</clearOutputDir>
+        </configuration>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
