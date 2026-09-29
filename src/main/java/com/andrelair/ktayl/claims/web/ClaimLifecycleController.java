@@ -27,6 +27,13 @@ public class ClaimLifecycleController {
         this.lifecycle = lifecycle;
     }
 
+    /** The claims inbox — newest-first, optional {@code ?status=} filter. Reads the read-model. */
+    @GetMapping
+    public java.util.List<ClaimResponse> list(
+            @org.springframework.web.bind.annotation.RequestParam(required = false) String status) {
+        return lifecycle.list(status).stream().map(ClaimResponse::from).toList();
+    }
+
     /** Read a claim's current state. Unknown claim ⇒ 404 (no authority header needed — a plain read). */
     @GetMapping("/{claimNumber}")
     public ClaimResponse get(@PathVariable String claimNumber) {

@@ -27,4 +27,12 @@ public class JpaClaimReadModel implements ClaimReadModel {
                 .filter(e -> !e.isDeleted())
                 .map(ClaimReadEntity::toClaim);
     }
+
+    @Override
+    public java.util.List<Claim> list(String status) {
+        var rows = (status == null || status.isBlank())
+                ? repo.findByDeletedFalseOrderByRegisteredAtDesc()
+                : repo.findByStatusAndDeletedFalseOrderByRegisteredAtDesc(status);
+        return rows.stream().map(ClaimReadEntity::toClaim).toList();
+    }
 }
