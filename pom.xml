@@ -123,7 +123,29 @@
           <!-- Allow Mockito/Byte Buddy to run on a JDK newer than it officially supports
                (local dev may be on JDK 24+; CI pins Java 21 where this is a no-op). -->
           <argLine>-Dnet.bytebuddy.experimental=true</argLine>
+          <!-- surefire runs L0/L1 unit tests (*Test); the L2 *IT integration tests are run by
+               failsafe in the integration-test phase (they need Docker/testcontainers). -->
+          <excludes>
+            <exclude>**/*IT.java</exclude>
+          </excludes>
         </configuration>
+      </plugin>
+      <!-- L2 integration tests (*IT) — testcontainers Postgres. Bound to verify so `mvn verify`
+           (the CI gate) runs them; GitHub runners have Docker. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-failsafe-plugin</artifactId>
+        <configuration>
+          <argLine>-Dnet.bytebuddy.experimental=true</argLine>
+        </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>integration-test</goal>
+              <goal>verify</goal>
+            </goals>
+          </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>
