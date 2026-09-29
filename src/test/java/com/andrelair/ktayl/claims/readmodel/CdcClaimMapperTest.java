@@ -44,6 +44,7 @@ class CdcClaimMapperTest {
         ClaimReadEntity e = new ClaimReadEntity();
         CdcClaimMapper.applyTo(e, payload);
 
+        assertThat(e.getClaimId()).isEqualTo(4L);   // keyed on the stable source id, not claim_number
         var claim = e.toClaim();
         assertThat(claim.claimNumber()).isEqualTo("CLM-2026-000004");
         assertThat(claim.policyNumber()).isEqualTo("POL-PROP-0001");

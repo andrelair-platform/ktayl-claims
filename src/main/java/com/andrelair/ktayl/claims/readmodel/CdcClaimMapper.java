@@ -29,7 +29,12 @@ public final class CdcClaimMapper {
         return payload != null && !payload.isNull() ? payload : value;
     }
 
-    /** The claim's business key — the projection's primary key. */
+    /** The legacy source PK ({@code gc_claim.id}) — the projection's stable primary key. */
+    public static Long sourceId(JsonNode payload) {
+        return longOrNull(payload, "id");
+    }
+
+    /** The claim's business key — a unique column (transitions TMP-… → CLM-… in place). */
     public static String claimNumber(JsonNode payload) {
         return text(payload, "claim_number");
     }
@@ -42,6 +47,7 @@ public final class CdcClaimMapper {
 
     /** Apply the CDC payload onto the entity (used for both insert and update — an idempotent upsert). */
     public static void applyTo(ClaimReadEntity e, JsonNode payload) {
+        e.setClaimId(sourceId(payload));
         e.setClaimNumber(claimNumber(payload));
         e.setPolicyNumber(text(payload, "policy_number"));
         e.setStatus(text(payload, "status"));

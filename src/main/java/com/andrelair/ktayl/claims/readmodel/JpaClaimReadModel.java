@@ -23,7 +23,7 @@ public class JpaClaimReadModel implements ClaimReadModel {
 
     @Override
     public Optional<Claim> findClaim(String claimNumber) {
-        return repo.findById(claimNumber)
+        return repo.findByClaimNumber(claimNumber)
                 .filter(e -> !e.isDeleted())
                 .map(ClaimReadEntity::toClaim);
     }
