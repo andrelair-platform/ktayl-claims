@@ -50,6 +50,11 @@ public class ClaimLifecycleService {
                 .orElseThrow(() -> new ClaimNotFoundException(claimNumber));
     }
 
+    /** Query side: the claims inbox (newest-first, optional status filter) from the read-model. */
+    public java.util.List<Claim> list(String status) {
+        return readModel.list(status);
+    }
+
     /** Read-your-writes: after a command, return the legacy's authoritative state (not the projection). */
     private Claim authoritativeClaim(String claimNumber) {
         return legacy.findClaim(claimNumber)

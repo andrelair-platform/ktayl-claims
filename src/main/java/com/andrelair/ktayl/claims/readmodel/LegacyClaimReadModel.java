@@ -26,4 +26,10 @@ public class LegacyClaimReadModel implements ClaimReadModel {
     public Optional<Claim> findClaim(String claimNumber) {
         return legacy.findClaim(claimNumber);
     }
+
+    @Override
+    public java.util.List<Claim> list(String status) {
+        // The legacy (SOAP) has no list-all query; the inbox requires the read-model profile.
+        return java.util.List.of();
+    }
 }

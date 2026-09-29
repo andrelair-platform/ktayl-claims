@@ -2,6 +2,7 @@ package com.andrelair.ktayl.claims.readmodel;
 
 import com.andrelair.ktayl.claims.domain.Claim;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -16,4 +17,7 @@ public interface ClaimReadModel {
 
     /** Read a claim's current state. {@code Optional.empty()} ⇒ unknown claim (⇒ 404). */
     Optional<Claim> findClaim(String claimNumber);
+
+    /** The claims inbox — newest-first, optionally filtered by status. Empty when no read-model (stub). */
+    List<Claim> list(String status);
 }

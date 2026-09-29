@@ -13,6 +13,7 @@
 | [006](#adr-006) | Stack: GlobalCore Java8/SOAP/Oracle · ACL Java/Spring Boot · Debezium · Postgres | Accepted | SA/TL |
 | [007](#adr-007) | The Oracle→Postgres migration is a later, optional footnote | Proposed | SA/TL |
 | [008](#adr-008) | Reads move to the CQRS read-model (eventual consistency) + the port splits write/read | Accepted | SA/TL |
+| [009](#adr-009) | Adjuster workbench = Angular SPA + a BFF shim (deliberate palette exception) | Accepted | SA/TL |
 
 ---
 
@@ -150,3 +151,24 @@ is what reads should hit.
 **idempotency** layer (already built, `Idempotency-Key`) becomes load-bearing (SOAP writes aren't idempotent;
 retries must not double-write). Net: the stub deploy de-risked the **north-side contract + the port seam**;
 this ADR names the **read-consistency shift** as the headline behavioural change of the south-side swap.
+
+## ADR-009 — Adjuster workbench = Angular SPA + a BFF shim {#adr-009}
+**Status: Accepted (2026-09-29).**
+**Context.** Claims needs an end-user interface for **internal adjusters** (the claim handlers) — an
+inbox → claim detail → reserve/settle-within-authority → audit. The platform default is **Next.js +
+React** (used by underwriting/retrieva/iam), whose built-in BFF (server components/actions) keeps the
+backend API off the browser. The owner chose **Angular** deliberately for portfolio/career breadth —
+Angular is prevalent in the French enterprise / insurance / banking market.
+**Decision.** The workbench is an **Angular SPA** (standalone components) served by **nginx**, with the
+nginx layer acting as a **BFF shim**: it serves the static app AND **reverse-proxies `/api/*` to the ACL
+Service in-cluster** (`API_URL`, injected at runtime via nginx `envsubst` → one env-agnostic image).
+So the browser talks **same-origin** to nginx; the **ACL API is never exposed to the public surface**
+(the same security posture the Next.js BFF gives — no direct browser→API, no public API ingress, no CORS).
+This is a **deliberate exception** to the Next.js-default palette (`tech-stack-selection.md`), recorded here.
+**Consequences.** (+) Real Angular in the portfolio; API stays internal; env-agnostic image (Kargo git-
+Warehouse already promotes 2 images/commit). (−) A **3rd** frontend framework to maintain; a **BFF shim**
+(nginx proxy) instead of a first-class server runtime — when prod auth lands, the token injection goes in
+the shim (nginx `auth_request`, or upgrade the shim to a small Node/Express BFF). Security review: the
+trust boundary is unchanged vs the Next.js BFF (browser→nginx→internal ACL); the ACL keeps its own
+authority checks server-side. Deploy = the dual-workload wrapper chart (`frontend` alias, nginx image),
+host `claims-app.10.0.0.200.nip.io`.

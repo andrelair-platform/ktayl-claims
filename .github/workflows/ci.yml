@@ -11,6 +11,10 @@ env:
   REGISTRY:   harbor.10.0.0.200.nip.io
   IMAGE_NAME: library/ktayl-claims
   GHCR_IMAGE: ghcr.io/andrelair-platform/ktayl-claims   # prod images: immutable SHA, durable
+  # The Angular adjuster workbench (ADR-009) is a SECOND image built from the SAME commit. Backend +
+  # frontend share the commit SHA tag → the git-Warehouse promotes a consistent backend+frontend pair.
+  IMAGE_NAME_FRONTEND: library/ktayl-claims-frontend
+  GHCR_IMAGE_FRONTEND: ghcr.io/andrelair-platform/ktayl-claims-frontend
 
 jobs:
   # ── L0 + L1 — build & unit tests ───────────────────────────────────────────
@@ -27,10 +31,26 @@ jobs:
       - name: Build & test
         run: mvn -B verify
 
+  # ── L0 + L1 — the Angular workbench (type-check + production build) ─────────
+  frontend:
+    name: frontend build (Angular)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+
   # ── Build a verified, immutable artifact → Harbor (dev) + ghcr (prod) ──────
   build-and-push:
     name: build image → Harbor + ghcr
-    needs: build-test
+    needs: [build-test, frontend]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
@@ -50,6 +70,10 @@ jobs:
           { echo "tags<<EOF";
             echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${SHA}";
             echo "${{ env.GHCR_IMAGE }}:${SHA}";
+            echo "EOF"; } >> "$GITHUB_OUTPUT"
+          { echo "tags_frontend<<EOF";
+            echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}:${SHA}";
+            echo "${{ env.GHCR_IMAGE_FRONTEND }}:${SHA}";
             echo "EOF"; } >> "$GITHUB_OUTPUT"
 
       - name: Connect to Tailscale
@@ -143,5 +167,51 @@ jobs:
           cosign attach sbom --sbom sbom.json --type cyclonedx \
             ${{ env.GHCR_IMAGE }}@${{ steps.build.outputs.digest }}
 
-  # Deployment/promotion (GitOps + Kargo dev→prod) is wired later, when ktayl-claims
-  # gets its services/ dir in minicloud-gitops. CI ends at the immutable artifact.
+      # ── Frontend image (Angular workbench, ADR-009) — same scan-before-push discipline ──
+      - name: Build frontend (load locally — NOT pushed yet)
+        uses: docker/build-push-action@v7
+        with:
+          context: frontend
+          file: frontend/Dockerfile
+          load: true
+          platforms: linux/amd64
+          tags: local-scan/ktayl-claims-frontend:${{ steps.meta.outputs.image_tag }}
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+
+      - name: Scan frontend (Trivy — CRITICAL only) — BEFORE any push
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref:      local-scan/ktayl-claims-frontend:${{ steps.meta.outputs.image_tag }}
+          format:         table
+          exit-code:      '1'
+          severity:       CRITICAL
+          ignore-unfixed: true
+
+      - name: Push frontend (only if the scan passed)
+        id: build_frontend
+        uses: docker/build-push-action@v7
+        with:
+          context: frontend
+          file: frontend/Dockerfile
+          push: true
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags_frontend }}
+          cache-from: type=gha
+
+      - name: Generate frontend SBOM (CycloneDX)
+        run: |
+          syft ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}@${{ steps.build_frontend.outputs.digest }} \
+            -o cyclonedx-json=sbom-frontend.json
+
+      - name: Sign + attach frontend SBOM (Harbor)
+        run: |
+          cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}@${{ steps.build_frontend.outputs.digest }}
+          cosign attach sbom --sbom sbom-frontend.json --type cyclonedx \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}@${{ steps.build_frontend.outputs.digest }}
+
+      - name: Sign + attach frontend SBOM (ghcr — prod)
+        run: |
+          cosign sign --yes ${{ env.GHCR_IMAGE_FRONTEND }}@${{ steps.build_frontend.outputs.digest }}
+          cosign attach sbom --sbom sbom-frontend.json --type cyclonedx \
+            ${{ env.GHCR_IMAGE_FRONTEND }}@${{ steps.build_frontend.outputs.digest }}
