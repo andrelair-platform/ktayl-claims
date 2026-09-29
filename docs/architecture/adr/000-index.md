@@ -12,6 +12,7 @@
 | [005](#adr-005) | AI reaches structured data only via ACL SQL-tools | Proposed | SA/TL |
 | [006](#adr-006) | Stack: GlobalCore Java8/SOAP/Oracle · ACL Java/Spring Boot · Debezium · Postgres | Accepted | SA/TL |
 | [007](#adr-007) | The Oracle→Postgres migration is a later, optional footnote | Proposed | SA/TL |
+| [008](#adr-008) | Reads move to the CQRS read-model (eventual consistency) + the port splits write/read | Proposed | SA/TL |
 
 ---
 
@@ -100,3 +101,25 @@ Oracle→Postgres migration may be done **later** purely to demonstrate the tech
 the goal.
 **Consequences.** Keeps the hybrid honest (wrapping is the steady state). The migration, if done, is a small
 capstone, not v1 scope.
+
+## ADR-008 — Reads move to the CQRS read-model (eventual consistency); the port splits write/read {#adr-008}
+**Status: Proposed — recorded now, BEFORE the real-legacy build, so it isn't rediscovered painfully.**
+**Context.** The v1 ACL is deployed on dev with a **`StubGlobalCoreAdapter`** (in-memory): FNOL/reserve/settle
++ the new `GET /api/claims/{id}` all read and write the *same synchronous store*, so **read-after-write is
+instant** (verified live: settle → immediate `GET` = SETTLED). That is a **stub artifact**. The target
+architecture (ADR-003/004) is different: **writes** go to GlobalCore via **SOAP**; GlobalCore's Oracle
+changes are captured by **Debezium CDC → NATS** and projected into a **CQRS-lite Postgres read-model**, which
+is what reads should hit.
+**Decision.** When the real legacy + CDC land:
+1. **Reads come from the read-model, not the write side** → the system is **eventually consistent**; a write
+   (reserve/settle) is **not** guaranteed visible on the next read (CDC lag).
+2. **The `GlobalCorePort` splits** into a **write port** (SOAP → GlobalCore: `createClaim`/`reserve`/`settle`)
+   and a **read port** (the Postgres read-model: `findClaim`). The stub collapses both; the real build separates them.
+3. **Consumers/tests/UX must not assume read-after-write.** Provide read-your-own-write only via an explicit
+   mechanism (await/poll, or a post-write hint), never by reading the write side. The live QA smoke that does
+   "settle then immediately GET" must tolerate lag (retry/await) against the real backend.
+**Consequences.** The deployment becomes **stateful** (a CNPG read-model + Debezium runtime) and gains
+**egress** (ACL → SOAP + NATS + Postgres) — today's stateless, ingress-only chart is the stub-era shape. The
+**idempotency** layer (already built, `Idempotency-Key`) becomes load-bearing (SOAP writes aren't idempotent;
+retries must not double-write). Net: the stub deploy de-risked the **north-side contract + the port seam**;
+this ADR names the **read-consistency shift** as the headline behavioural change of the south-side swap.

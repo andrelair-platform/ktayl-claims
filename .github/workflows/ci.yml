@@ -85,7 +85,32 @@ jobs:
             [registry."harbor.10.0.0.200.nip.io"]
               insecure = true
 
-      - name: Build and push
+      # Root-cause fix (c2a607a incident): SCAN BEFORE PUSH. Previously the image was pushed first and
+      # scanned after, so a failed run (bad scan / later step) still left a promotable image in the
+      # registry — Kargo's Warehouse (which only matches the tag regex) could then promote it. Now the
+      # image is built + loaded LOCALLY, scanned, and only pushed if the scan passes → a failed run
+      # NEVER leaves a promotable image. (Single-platform linux/amd64 makes `load: true` viable.)
+      - name: Build (load locally — NOT pushed yet)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile
+          load: true
+          platforms: linux/amd64
+          tags: local-scan/ktayl-claims:${{ steps.meta.outputs.image_tag }}
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+
+      - name: Scan image (Trivy — CRITICAL only) — BEFORE any push
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref:      local-scan/ktayl-claims:${{ steps.meta.outputs.image_tag }}
+          format:         table
+          exit-code:      '1'
+          severity:       CRITICAL
+          ignore-unfixed: true
+
+      - name: Push (only reached if the scan passed)
         id: build
         uses: docker/build-push-action@v7
         with:
@@ -94,17 +119,7 @@ jobs:
           push: true
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
-          cache-from: type=gha
-          cache-to:   type=gha,mode=max
-
-      - name: Scan image (Trivy — CRITICAL only)
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref:      ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
-          format:         table
-          exit-code:      '1'
-          severity:       CRITICAL
-          ignore-unfixed: true
+          cache-from: type=gha   # cache hit from the build above → just pushes, same digest
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3
