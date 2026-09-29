@@ -19,6 +19,9 @@
 
   <properties>
     <java.version>21</java.version>
+    <!-- Override Spring Boot 3.3.5's managed Tomcat (10.1.31) → patched 10.1.60 (matches the ACL pom):
+         clears the CRITICAL tomcat CVEs (FORM-auth bypass CVE-2026-68525 et al.) the scan-before-push caught. -->
+    <tomcat.version>10.1.60</tomcat.version>
   </properties>
 
   <dependencies>
