@@ -1,6 +1,15 @@
 spring:
   application:
     name: ktayl-claims-acl
+  # Default (stub / offline / unit tests): NO database. Exclude the JPA/DataSource/Flyway auto-config
+  # so the app starts with no DB — the read side falls back to LegacyClaimReadModel (profile !readmodel).
+  # The `readmodel` profile below re-enables them (list override, not merge).
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration
+      - org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration
 
 server:
   port: 8080
@@ -22,3 +31,37 @@ info:
   app:
     name: ktayl-claims-acl
     role: ACL / strangler over GlobalCore
+
+---
+# Slice D (ADR-008) — CQRS read-model + CDC projector. Active on the `readmodel` profile (dev runs
+# `soap,readmodel`). Datasource points at the claims CNPG; Flyway owns the schema; the projector
+# consumes the Slice-C CDC feed from NATS JetStream.
+spring:
+  config:
+    activate:
+      on-profile: readmodel
+  autoconfigure:
+    exclude: []            # re-enable JPA/DataSource/Flyway (overrides the default list above)
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: validate   # Flyway owns DDL; Hibernate only validates the mapping
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+nats:
+  url: ${NATS_URL:nats://nats.messaging.svc:4222}
+
+cdc:
+  stream: ${CDC_STREAM:CLAIMS_CDC}
+  subject: ${CDC_SUBJECT:claims-cdc.globalcore.gc_claim}
+  durable: ${CDC_DURABLE:claims-projector}
