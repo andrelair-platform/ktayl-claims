@@ -6,6 +6,7 @@ import com.andrelair.ktayl.claims.domain.ClaimNotFoundException;
 import com.andrelair.ktayl.claims.domain.ClaimStatus;
 import com.andrelair.ktayl.claims.domain.IllegalTransitionException;
 import com.andrelair.ktayl.claims.legacy.StubGlobalCoreAdapter;
+import com.andrelair.ktayl.claims.readmodel.LegacyClaimReadModel;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -18,7 +19,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class ClaimLifecycleServiceTest {
 
     private final StubGlobalCoreAdapter legacy = new StubGlobalCoreAdapter();
-    private final ClaimLifecycleService service = new ClaimLifecycleService(legacy);
+    // No read-model DB in the unit test → the read side delegates to the (stub) legacy.
+    private final ClaimLifecycleService service =
+            new ClaimLifecycleService(legacy, new LegacyClaimReadModel(legacy));
 
     private final Actor adjuster = new Actor("adj", Authority.ADJUSTER);
     private final Actor senior = new Actor("snr", Authority.SENIOR);

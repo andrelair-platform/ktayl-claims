@@ -12,7 +12,7 @@
 | [005](#adr-005) | AI reaches structured data only via ACL SQL-tools | Proposed | SA/TL |
 | [006](#adr-006) | Stack: GlobalCore Java8/SOAP/Oracle · ACL Java/Spring Boot · Debezium · Postgres | Accepted | SA/TL |
 | [007](#adr-007) | The Oracle→Postgres migration is a later, optional footnote | Proposed | SA/TL |
-| [008](#adr-008) | Reads move to the CQRS read-model (eventual consistency) + the port splits write/read | Proposed | SA/TL |
+| [008](#adr-008) | Reads move to the CQRS read-model (eventual consistency) + the port splits write/read | Accepted | SA/TL |
 
 ---
 
@@ -119,7 +119,18 @@ the goal.
 capstone, not v1 scope.
 
 ## ADR-008 — Reads move to the CQRS read-model (eventual consistency); the port splits write/read {#adr-008}
-**Status: Proposed — recorded now, BEFORE the real-legacy build, so it isn't rediscovered painfully.**
+**Status: Accepted — implemented Slice D (2026-09-29).**
+
+> **Implemented (Slice D refinement).** A dedicated `ClaimReadModel` **query port** was added (impl
+> `JpaClaimReadModel` over a CNPG `claim_read` projection under profile `readmodel`; fallback
+> `LegacyClaimReadModel` delegates to the legacy when no DB is deployed). `GET /api/claims/{id}` reads it
+> (eventually consistent). **Refinement vs the original decision:** `findClaim` was *kept* on
+> `GlobalCorePort` (the write side) and is used only for the **command** response path — reserve/settle
+> return the legacy's **authoritative** post-command state (read-your-writes), so a mutation response is
+> never stale; only *plain queries* are eventual. The CDC projector (`CdcProjector`) is an in-process
+> durable JetStream consumer of `claims-cdc.globalcore.gc_claim` → idempotent last-writer-wins upsert.
+> Deployment gained the CNPG read-model + Debezium runtime + NATS/Postgres egress, exactly as predicted.
+
 **Context.** The v1 ACL is deployed on dev with a **`StubGlobalCoreAdapter`** (in-memory): FNOL/reserve/settle
 + the new `GET /api/claims/{id}` all read and write the *same synchronous store*, so **read-after-write is
 instant** (verified live: settle → immediate `GET` = SETTLED). That is a **stub artifact**. The target
