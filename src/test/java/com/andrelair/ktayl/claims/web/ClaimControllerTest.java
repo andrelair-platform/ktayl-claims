@@ -68,4 +68,16 @@ class ClaimControllerTest {
                         .header("Idempotency-Key", "k3").content("{}"))
                 .andExpect(status().isBadRequest());
     }
+
+    /** QA-gate regression (2026-09-29): oversized claimantName must be rejected at the edge (400),
+     *  not passed through to the legacy varchar(160) where it blew up as a 500. */
+    @Test
+    void oversizedClaimantNameReturns400() throws Exception {
+        String big = """
+                {"policyNumber":"POL-1","lossDate":"2026-06-01","peril":"FIRE","claimantName":"%s"}"""
+                .formatted("X".repeat(5000));
+        mvc.perform(post("/api/claims").contentType(MediaType.APPLICATION_JSON)
+                        .header("Idempotency-Key", "k4").content(big))
+                .andExpect(status().isBadRequest());
+    }
 }
