@@ -33,6 +33,11 @@ public class ClaimLifecycleService {
         return currentClaim(claimNumber);
     }
 
+    /** Read a claim's current state (no authority needed — a plain read). Unknown ⇒ ClaimNotFoundException (404). */
+    public Claim get(String claimNumber) {
+        return currentClaim(claimNumber);
+    }
+
     private Claim currentClaim(String claimNumber) {
         return legacy.findClaim(claimNumber)
                 .orElseThrow(() -> new ClaimNotFoundException(claimNumber));

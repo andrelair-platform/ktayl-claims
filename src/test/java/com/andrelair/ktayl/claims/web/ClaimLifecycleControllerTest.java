@@ -18,6 +18,7 @@ import java.time.LocalDate;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -84,6 +85,25 @@ class ClaimLifecycleControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("X-Claims-Authority", "SENIOR")
                         .content(AMOUNT))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void getReturns200WithClaim() throws Exception {
+        when(lifecycle.get("CLM-2026-000001")).thenReturn(reservedClaim());
+
+        mvc.perform(get("/api/claims/CLM-2026-000001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.claimNumber").value("CLM-2026-000001"))
+                .andExpect(jsonPath("$.status").value("RESERVED"));
+    }
+
+    @Test
+    void getUnknownClaimReturns404() throws Exception {
+        when(lifecycle.get("CLM-2026-999999"))
+                .thenThrow(new ClaimNotFoundException("CLM-2026-999999"));
+
+        mvc.perform(get("/api/claims/CLM-2026-999999"))
                 .andExpect(status().isNotFound());
     }
 
