@@ -17,6 +17,11 @@ import org.springframework.context.SmartLifecycle;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+
 /**
  * Slice D CDC projector (profile {@code readmodel}). A durable JetStream push-consumer on
  * {@code CLAIMS_CDC} filtered to {@code claims-cdc.globalcore.gc_claim}: each record is decoded and
@@ -39,6 +44,13 @@ public class CdcProjector implements SmartLifecycle {
     private final String subject;
     private final String durable;
 
+    private static final Duration RETRY_DELAY = Duration.ofSeconds(10);
+    private final ScheduledExecutorService retryer = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "cdc-projector-retry");
+        t.setDaemon(true);
+        return t;
+    });
+
     private Dispatcher dispatcher;
     private JetStreamSubscription subscription;
     private volatile boolean running;
@@ -58,6 +70,22 @@ public class CdcProjector implements SmartLifecycle {
 
     @Override
     public void start() {
+        // NON-FATAL + self-retrying (deliberate). The projector binds a JetStream push DURABLE, which
+        // allows only ONE active subscriber. During a rolling update both the old and new pod run
+        // briefly, so the new pod's bind fails with [SUB-90012] "already bound" — if that threw, the
+        // new pod would never become Ready, the old would never terminate to release the durable, and
+        // the roll would DEADLOCK. Instead we start Ready regardless and retry the bind in the
+        // background: whichever pod holds the singleton durable projects, the rest stand by and take
+        // over when it's released (a natural leader-election that also makes N>1 replicas safe). A
+        // stale read-model is a degraded read, not an outage — the ACL API must not depend on it.
+        this.running = true;
+        attemptSubscribe();
+    }
+
+    private synchronized void attemptSubscribe() {
+        if (!running || subscription != null) {
+            return;
+        }
         try {
             JetStream js = nats.jetStream();
             ConsumerConfiguration cc = ConsumerConfiguration.builder()
@@ -73,10 +101,23 @@ public class CdcProjector implements SmartLifecycle {
             this.dispatcher = nats.createDispatcher();
             // autoAck=false → we ack only after a successful projection (at-least-once).
             this.subscription = js.subscribe(subject, dispatcher, this::onMessage, false, options);
-            this.running = true;
             log.info("CDC projector subscribed: stream={} subject={} durable={}", stream, subject, durable);
         } catch (Exception e) {
-            throw new IllegalStateException("failed to start CDC projector", e);
+            // e.g. [SUB-90012] already bound (another pod holds the durable during a roll) or NATS
+            // unreachable. Clean up any half-created dispatcher and retry — do NOT fail app startup.
+            if (dispatcher != null) {
+                try {
+                    nats.closeDispatcher(dispatcher);
+                } catch (Exception ignore) {
+                    // best effort
+                }
+                dispatcher = null;
+            }
+            if (running) {
+                log.warn("CDC projector not subscribed yet ({}); retrying in {}s", e.getMessage(),
+                        RETRY_DELAY.getSeconds());
+                retryer.schedule(this::attemptSubscribe, RETRY_DELAY.getSeconds(), TimeUnit.SECONDS);
+            }
         }
     }
 
@@ -99,6 +140,7 @@ public class CdcProjector implements SmartLifecycle {
     @Override
     public void stop() {
         running = false;
+        retryer.shutdownNow();
         try {
             if (subscription != null) {
                 subscription.unsubscribe();
