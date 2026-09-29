@@ -1,0 +1,54 @@
+# GlobalCore legacy — runs OUTSIDE k3s (ADR-002), a plain docker compose on the controller (10.0.0.1),
+# reachable on the LAN. In-cluster consumers reach it by IP:port (egress-netpol-gated):
+#   - the ACL  → SOAP  10.0.0.1:8080
+#   - Debezium → MySQL 10.0.0.1:3306  (Slice C)
+#
+# MySQL is configured for Debezium: ROW-format binlog + GTID (the canonical binlog CDC source, ADR-006
+# amended → MySQL, not Oracle). Data on a named volume (small — sized for the tight controller disk).
+name: globalcore-legacy
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: globalcore-mysql
+    restart: unless-stopped
+    command:
+      - --server-id=1
+      - --log-bin=mysql-bin
+      - --binlog-format=ROW
+      - --binlog-row-image=FULL
+      - --gtid-mode=ON
+      - --enforce-gtid-consistency=ON
+      - --binlog-expire-logs-seconds=604800   # 7d
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-globalcore-root}
+      MYSQL_DATABASE: globalcore
+      MYSQL_USER: globalcore
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-globalcore}
+    ports:
+      - "3306:3306"           # Debezium (in-cluster) connects here over the LAN
+    volumes:
+      - gc-mysql-data:/var/lib/mysql
+      - ./db:/docker-entrypoint-initdb.d:ro   # 01-schema, 02-seed, 03-cdc-user run once on first init
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-p${MYSQL_ROOT_PASSWORD:-globalcore-root}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  globalcore:
+    build: ./service
+    container_name: globalcore-soap
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/globalcore
+      SPRING_DATASOURCE_USERNAME: globalcore
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:-globalcore}
+    ports:
+      - "8080:8080"           # the ACL (in-cluster) calls SOAP here over the LAN
+
+volumes:
+  gc-mysql-data:

@@ -38,6 +38,16 @@ Debezium reaches its Oracle (`:1521`).
 **Consequences.** One legacy, on real Oracle, delivering Claims — realism + the Oracle credential, off the
 constrained cluster (no Longhorn). **Accepted:** single instance (no RAC/Data Guard); a cross-boundary hop.
 
+> **AMENDED 2026-09-29 — legacy DB = MySQL 8, not Oracle Free (simulated legacy).** Oracle XE (~2 GB +
+> licensing awkwardness) is too heavy for the constrained box, and Oracle *dialect fidelity* was never the
+> point — the **Strangler + ACL + CDC pattern** is. The legacy is now **MySQL 8** (binlog + GTID for
+> Debezium's canonical binlog CDC connector), a **simulated stand-in for an Oracle-era legacy core** — stated
+> honestly, not "real Oracle". **MySQL over Postgres** deliberately: the modern read-model is Postgres, so a
+> MySQL legacy gives a genuine **cross-engine** pipeline (MySQL→Debezium→NATS→Postgres) — a truer strangler
+> than Postgres→Postgres. Access model unchanged: `docker compose` **outside k3s**, Debezium reaches MySQL
+> **`:3306`** (was Oracle `:1521`), the ACL reaches SOAP `:8080`, gated by egress netpol. ADR-007's optional
+> migration capstone becomes MySQL→Postgres.
+
 **Placement options (same access model either way).** GlobalCore runs as a plain `docker compose` (Oracle
 `:1521` + SOAP app `:8080`) on a host reachable on the internal LAN (`10.0.0.0/24`); in-cluster consumers
 (the ACL, Debezium) reach it by IP:port, gated by a default-deny egress netpol. Two valid hosts:
@@ -93,6 +103,12 @@ build, and Spring is the stronger fit for it. CDC = **Debezium → NATS**. Read-
 (later) = Next.js.
 **Consequences.** Java realism (esp. SOAP + Oracle) at the cost of a heavier solo build than a Python ACL —
 accepted deliberately. The stack is settled; no open decision remains at the arch gate.
+
+> **AMENDED 2026-09-29 (see ADR-002 amendment):** legacy persistence = **MySQL 8** (binlog CDC), a simulated
+> stand-in for Oracle. The ACL side is **unchanged** — Java 21 + Spring Boot, SOAP client (spring-ws/JAX-WS)
+> to GlobalCore; the JPA-over-Oracle note now reads JPA/JDBC-over-MySQL **on the legacy side only** (the ACL
+> never touches the legacy DB directly — it goes through SOAP + the Postgres read-model). CDC =
+> **Debezium MySQL connector → NATS**. Read-model = **PostgreSQL** (unchanged).
 
 ## ADR-007 — Migration is a later, optional footnote {#adr-007}
 **Context.** The pattern often ends in "migrate off Oracle" — but the point is the legacy stays.
