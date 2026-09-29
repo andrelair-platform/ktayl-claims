@@ -4,6 +4,7 @@ import com.andrelair.ktayl.claims.application.Actor;
 import com.andrelair.ktayl.claims.application.Authority;
 import com.andrelair.ktayl.claims.application.ClaimLifecycleService;
 import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -24,6 +25,12 @@ public class ClaimLifecycleController {
 
     public ClaimLifecycleController(ClaimLifecycleService lifecycle) {
         this.lifecycle = lifecycle;
+    }
+
+    /** Read a claim's current state. Unknown claim ⇒ 404 (no authority header needed — a plain read). */
+    @GetMapping("/{claimNumber}")
+    public ClaimResponse get(@PathVariable String claimNumber) {
+        return ClaimResponse.from(lifecycle.get(claimNumber));
     }
 
     @PostMapping("/{claimNumber}/reserve")
