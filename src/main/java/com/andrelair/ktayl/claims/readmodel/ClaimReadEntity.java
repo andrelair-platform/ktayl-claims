@@ -16,8 +16,12 @@ import java.time.OffsetDateTime;
 @Table(name = "claim_read")
 public class ClaimReadEntity {
 
+    // PK = the legacy source id (gc_claim.id) — stable across the TMP→CLM claim_number rename.
     @Id
-    @Column(name = "claim_number")
+    @Column(name = "claim_id")
+    private Long claimId;
+
+    @Column(name = "claim_number", nullable = false, unique = true)
     private String claimNumber;
 
     @Column(name = "policy_number", nullable = false)
@@ -60,6 +64,10 @@ public class ClaimReadEntity {
                 lossDate, peril, claimantName, registeredAt);
     }
 
+    public Long getClaimId() {
+        return claimId;
+    }
+
     public String getClaimNumber() {
         return claimNumber;
     }
@@ -69,6 +77,7 @@ public class ClaimReadEntity {
     }
 
     // package-private setters used only by the projector's upsert.
+    void setClaimId(Long v) { this.claimId = v; }
     void setClaimNumber(String v) { this.claimNumber = v; }
     void setPolicyNumber(String v) { this.policyNumber = v; }
     void setStatus(String v) { this.status = v; }

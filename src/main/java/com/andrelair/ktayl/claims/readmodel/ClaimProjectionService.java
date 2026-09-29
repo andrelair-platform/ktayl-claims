@@ -28,13 +28,15 @@ public class ClaimProjectionService {
     @Transactional
     public void project(JsonNode value) {
         JsonNode payload = CdcClaimMapper.payloadOf(value);
-        String claimNumber = CdcClaimMapper.claimNumber(payload);
-        if (claimNumber == null) {
-            log.warn("CDC record with no claim_number — skipped");
+        Long sourceId = CdcClaimMapper.sourceId(payload);
+        if (sourceId == null) {
+            log.warn("CDC record with no source id — skipped");
             return;
         }
 
-        ClaimReadEntity entity = repo.findById(claimNumber).orElse(null);
+        // Upsert by the STABLE source id, so the createClaim INSERT(TMP-…) + UPDATE(CLM-…) of the same
+        // legacy row converge on ONE read-model row (claim_number transitions in place — no orphan).
+        ClaimReadEntity entity = repo.findById(sourceId).orElse(null);
         if (entity != null && !CdcClaimMapper.isNewer(payload, entity)) {
             // A stale redelivery — keep the fresher row (idempotent no-op).
             return;
@@ -44,7 +46,8 @@ public class ClaimProjectionService {
         }
         CdcClaimMapper.applyTo(entity, payload);
         repo.save(entity);
-        log.debug("projected claim {} status={} deleted={}",
-                claimNumber, payload.path("status").asText(null), CdcClaimMapper.isDelete(payload));
+        log.debug("projected claim id={} number={} status={} deleted={}",
+                sourceId, CdcClaimMapper.claimNumber(payload),
+                payload.path("status").asText(null), CdcClaimMapper.isDelete(payload));
     }
 }

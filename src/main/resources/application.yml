@@ -64,4 +64,6 @@ nats:
 cdc:
   stream: ${CDC_STREAM:CLAIMS_CDC}
   subject: ${CDC_SUBJECT:claims-cdc.globalcore.gc_claim}
-  durable: ${CDC_DURABLE:claims-projector}
+  # v2: bumped after rekeying the read-model on the source id — a fresh durable replays the whole stream
+  # from the start, rebuilding claim_read correctly and dropping the old TMP-orphan rows.
+  durable: ${CDC_DURABLE:claims-projector-v2}
