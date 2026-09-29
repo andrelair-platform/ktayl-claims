@@ -35,11 +35,24 @@ docker run -d --name globalcore-mysql --restart unless-stopped \
   -v globalcore-mysql-data:/var/lib/mysql \
   mysql:8.4 --server-id=1 --log-bin=mysql-bin --binlog-format=ROW --binlog-row-image=FULL \
             --gtid-mode=ON --enforce-gtid-consistency=ON
+
+# SOAP service — the image is CI-BUILT (never hand-built on the controller). The GlobalCore workflow
+# pushes harbor.10.0.0.200.nip.io/library/globalcore-soap:<sha>; the controller pulls + runs it on the
+# same docker network as MySQL:
+docker network create globalcore 2>/dev/null || true
+docker network connect globalcore globalcore-mysql
+docker run -d --name globalcore-soap --restart unless-stopped --network globalcore -p 8080:8080 \
+  -e SPRING_DATASOURCE_URL=jdbc:mysql://globalcore-mysql:3306/globalcore \
+  -e SPRING_DATASOURCE_USERNAME=globalcore -e SPRING_DATASOURCE_PASSWORD=globalcore \
+  harbor.10.0.0.200.nip.io/library/globalcore-soap:<CI-SHA>
+# WSDL: http://<controller-LAN-ip>:8080/ws/claims.wsdl
 ```
 
 ## Status
 - **DB (CDC source): built + verified live** on the controller (throwaway run — schema/seed/binlog/GTID/cdc-user all OK).
-- **SOAP service: in progress** (Slice A continuation) — Java 21 + Spring-WS, JPA over MySQL, exposing
-  `findPolicy · createClaim · findClaim · reserve · settle` (the operations `GlobalCorePort` in the ACL declares),
-  with the lifecycle state machine enforced legacy-side (ADR-003). Then Slice B swaps the ACL's `StubGlobalCoreAdapter`
-  → a `SoapGlobalCoreAdapter`.
+- **SOAP service: built** — Java 21 + Spring-WS (contract-first XSD → JAXB), JPA over MySQL, exposing
+  `findPolicy · createClaim · findClaim · reserve · settle` (the operations `GlobalCorePort` declares), with the
+  lifecycle state machine enforced legacy-side (ADR-003). **Image is CI-built** (`globalcore.yml` workflow →
+  Harbor/ghcr, scan-before-push, signed) — the controller only pulls + runs it (off-cluster, ADR-002).
+- **Next:** run the CI image on the controller + smoke a SOAP call; then Slice B swaps the ACL's
+  `StubGlobalCoreAdapter` → a `SoapGlobalCoreAdapter`.
