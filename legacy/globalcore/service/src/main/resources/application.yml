@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: globalcore-legacy
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/globalcore}
+    username: ${SPRING_DATASOURCE_USERNAME:globalcore}
+    password: ${SPRING_DATASOURCE_PASSWORD:globalcore}
+  jpa:
+    hibernate:
+      ddl-auto: none        # schema is owned by db/01-schema.sql (the legacy DDL), not Hibernate
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+
+server:
+  port: 8080

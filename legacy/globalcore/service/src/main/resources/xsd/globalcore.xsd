@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:tns="http://globalcore.andrelair.com/claims"
+           targetNamespace="http://globalcore.andrelair.com/claims"
+           elementFormDefault="qualified">
+
+  <!-- Shared type: a claim as GlobalCore knows it (money = eurocents / minor units) -->
+  <xs:complexType name="ClaimType">
+    <xs:sequence>
+      <xs:element name="claimNumber" type="xs:string"/>
+      <xs:element name="policyNumber" type="xs:string"/>
+      <xs:element name="status" type="xs:string"/>
+      <xs:element name="lossDate" type="xs:date"/>
+      <xs:element name="peril" type="xs:string"/>
+      <xs:element name="claimantName" type="xs:string"/>
+      <xs:element name="reserveMinor" type="xs:long" minOccurs="0"/>
+      <xs:element name="settlementMinor" type="xs:long" minOccurs="0"/>
+      <xs:element name="registeredAt" type="xs:dateTime"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- findPolicy (coverage check) -->
+  <xs:element name="FindPolicyRequest">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="policyNumber" type="xs:string"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="FindPolicyResponse">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="found" type="xs:boolean"/>
+        <xs:element name="policyNumber" type="xs:string" minOccurs="0"/>
+        <xs:element name="holderName" type="xs:string" minOccurs="0"/>
+        <xs:element name="effectiveDate" type="xs:date" minOccurs="0"/>
+        <xs:element name="expiryDate" type="xs:date" minOccurs="0"/>
+        <xs:element name="peril" type="xs:string" minOccurs="0" maxOccurs="unbounded"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <!-- createClaim (FNOL) -->
+  <xs:element name="CreateClaimRequest">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="policyNumber" type="xs:string"/>
+        <xs:element name="lossDate" type="xs:date"/>
+        <xs:element name="peril" type="xs:string"/>
+        <xs:element name="claimantName" type="xs:string"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="CreateClaimResponse">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="claim" type="tns:ClaimType"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <!-- findClaim -->
+  <xs:element name="FindClaimRequest">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="claimNumber" type="xs:string"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="FindClaimResponse">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="found" type="xs:boolean"/>
+        <xs:element name="claim" type="tns:ClaimType" minOccurs="0"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <!-- reserve -->
+  <xs:element name="ReserveRequest">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="claimNumber" type="xs:string"/>
+        <xs:element name="amountMinor" type="xs:long"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="ReserveResponse">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="claim" type="tns:ClaimType"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <!-- settle -->
+  <xs:element name="SettleRequest">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="claimNumber" type="xs:string"/>
+        <xs:element name="amountMinor" type="xs:long"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="SettleResponse">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="claim" type="tns:ClaimType"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+</xs:schema>

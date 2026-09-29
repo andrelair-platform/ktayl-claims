@@ -37,7 +37,9 @@ services:
       retries: 12
 
   globalcore:
-    build: ./service
+    # CI-built image (Harbor dev registry), NOT built here — the controller pulls a specific SHA tag.
+    # Set GLOBALCORE_TAG to the CI-built commit SHA (from the GlobalCore workflow). Never hand-build.
+    image: harbor.10.0.0.200.nip.io/library/globalcore-soap:${GLOBALCORE_TAG:?set GLOBALCORE_TAG to the CI-built SHA}
     container_name: globalcore-soap
     restart: unless-stopped
     depends_on:
