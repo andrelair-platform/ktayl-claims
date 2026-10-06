@@ -1,0 +1,11 @@
+# tbls — reverse-engineers the schema (built from the Flyway migrations on an ephemeral Postgres) into
+# committed Mermaid ER docs; CI fails if docs/data-model drifts (see .github/workflows/ci.yml). Public
+# schema (no schema-per-module here). Baseline generated on x86_64 / postgres:17.4 to match CI.
+docPath: docs/data-model
+er:
+  format: mermaid
+format:
+  sort: true
+  adjust: true
+exclude:
+  - public.flyway_schema_history
