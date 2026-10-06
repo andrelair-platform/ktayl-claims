@@ -1,0 +1,148 @@
+{
+  "name": "claims",
+  "tables": [
+    {
+      "name": "public.claim_read",
+      "type": "BASE TABLE",
+      "columns": [
+        {
+          "name": "claim_id",
+          "type": "bigint",
+          "nullable": false
+        },
+        {
+          "name": "claim_number",
+          "type": "varchar(32)",
+          "nullable": false
+        },
+        {
+          "name": "claimant_name",
+          "type": "varchar(160)",
+          "nullable": false
+        },
+        {
+          "name": "deleted",
+          "type": "boolean",
+          "nullable": false,
+          "default": "false"
+        },
+        {
+          "name": "loss_date",
+          "type": "date",
+          "nullable": false
+        },
+        {
+          "name": "peril",
+          "type": "varchar(48)",
+          "nullable": false
+        },
+        {
+          "name": "policy_number",
+          "type": "varchar(32)",
+          "nullable": false
+        },
+        {
+          "name": "projected_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        },
+        {
+          "name": "registered_at",
+          "type": "timestamp with time zone",
+          "nullable": false
+        },
+        {
+          "name": "reserve_minor",
+          "type": "bigint",
+          "nullable": true
+        },
+        {
+          "name": "settlement_minor",
+          "type": "bigint",
+          "nullable": true
+        },
+        {
+          "name": "source_updated_at",
+          "type": "timestamp with time zone",
+          "nullable": true
+        },
+        {
+          "name": "status",
+          "type": "varchar(24)",
+          "nullable": false
+        }
+      ],
+      "indexes": [
+        {
+          "name": "claim_read_claim_number_key",
+          "def": "CREATE UNIQUE INDEX claim_read_claim_number_key ON public.claim_read USING btree (claim_number)",
+          "table": "public.claim_read",
+          "columns": [
+            "claim_number"
+          ]
+        },
+        {
+          "name": "claim_read_pkey",
+          "def": "CREATE UNIQUE INDEX claim_read_pkey ON public.claim_read USING btree (claim_id)",
+          "table": "public.claim_read",
+          "columns": [
+            "claim_id"
+          ]
+        },
+        {
+          "name": "idx_claim_read_policy",
+          "def": "CREATE INDEX idx_claim_read_policy ON public.claim_read USING btree (policy_number)",
+          "table": "public.claim_read",
+          "columns": [
+            "policy_number"
+          ]
+        },
+        {
+          "name": "idx_claim_read_status",
+          "def": "CREATE INDEX idx_claim_read_status ON public.claim_read USING btree (status)",
+          "table": "public.claim_read",
+          "columns": [
+            "status"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "claim_read_claim_number_key",
+          "type": "UNIQUE",
+          "def": "UNIQUE (claim_number)",
+          "table": "public.claim_read",
+          "referenced_table": "",
+          "columns": [
+            "claim_number"
+          ]
+        },
+        {
+          "name": "claim_read_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (claim_id)",
+          "table": "public.claim_read",
+          "referenced_table": "",
+          "columns": [
+            "claim_id"
+          ]
+        }
+      ]
+    }
+  ],
+  "driver": {
+    "name": "postgres",
+    "database_version": "PostgreSQL 17.4 (Debian 17.4-1.pgdg120+2) on x86_64-pc-linux-gnu, compiled by gcc (Debian 12.2.0-14) 12.2.0, 64-bit",
+    "meta": {
+      "current_schema": "public",
+      "search_paths": [
+        "postgres",
+        "public"
+      ],
+      "dict": {
+        "Functions": "Stored procedures and functions"
+      }
+    }
+  }
+}
