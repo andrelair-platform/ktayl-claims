@@ -6,12 +6,12 @@
 | ADR | Title | Status | Owner |
 |---|---|---|---|
 | [001](#adr-001) | Strangler Fig + ACL over GlobalCore (wrap, don't edit) | Proposed | SA/TL |
-| [002](#adr-002) | Legacy = GlobalCore on Oracle Free, OUTSIDE k8s (not a new repo, not Postgres) | Accepted | SA/TL |
+| [002](#adr-002) | Legacy = GlobalCore on MySQL 8 (stand-in for Oracle), OUTSIDE k8s (not a new repo, not Postgres) | Accepted | SA/TL |
 | [003](#adr-003) | Wrap surface = SOAP→JSON (writes) + CDC Debezium→NATS (events); keep the batch async model | Proposed | SA/TL |
 | [004](#adr-004) | CQRS-lite read-model (Postgres) projected from CDC | Proposed | SA/TL |
 | [005](#adr-005) | AI reaches structured data only via ACL SQL-tools | Proposed | SA/TL |
-| [006](#adr-006) | Stack: GlobalCore Java8/SOAP/Oracle · ACL Java/Spring Boot · Debezium · Postgres | Accepted | SA/TL |
-| [007](#adr-007) | The Oracle→Postgres migration is a later, optional footnote | Proposed | SA/TL |
+| [006](#adr-006) | Stack: GlobalCore Java8/SOAP/MySQL 8 · ACL Java/Spring Boot · Debezium · Postgres | Accepted | SA/TL |
+| [007](#adr-007) | The MySQL→Postgres migration is a later, optional footnote | Proposed | SA/TL |
 | [008](#adr-008) | Reads move to the CQRS read-model (eventual consistency) + the port splits write/read | Accepted | SA/TL |
 | [009](#adr-009) | Adjuster workbench = Angular SPA + a BFF shim (deliberate palette exception) | Accepted | SA/TL |
 
@@ -28,7 +28,7 @@ legacy); you wrap it.
 domain (Claims) at once. Cost: you must *understand* GlobalCore (SOAP contracts, PL/SQL, batch) before
 wrapping — which is the skill. New capability lives in the ACL.
 
-## ADR-002 — Legacy = GlobalCore on Oracle Free, outside k8s {#adr-002}
+## ADR-002 — Legacy = GlobalCore on MySQL 8 (amended from Oracle Free), outside k8s {#adr-002}
 **Context.** Policy is already modern (live PAS #6), so the legacy must be a domain we *need but haven't
 built* — **Claims**. The legacy engine already exists: **GlobalCore** (`globalcore-legacy`). Real **Oracle**
 experience is a required outcome.
@@ -48,6 +48,13 @@ constrained cluster (no Longhorn). **Accepted:** single instance (no RAC/Data Gu
 > than Postgres→Postgres. Access model unchanged: `docker compose` **outside k3s**, Debezium reaches MySQL
 > **`:3306`** (was Oracle `:1521`), the ACL reaches SOAP `:8080`, gated by egress netpol. ADR-007's optional
 > migration capstone becomes MySQL→Postgres.
+>
+> **AMENDED 2026-11-04 — repo retired + docs reconciled.** The standalone `globalcore-legacy` repo was
+> **retired** (local + remote deleted); the legacy now lives **embedded** at `ktayl-claims/legacy/globalcore/`
+> — the copy the ACL actually wraps. The index titles + ADR-003/006/007 are reconciled to **MySQL 8**; the
+> Oracle prose below/above is kept as **superseded history** (ADR hygiene). Honest consequence: the original
+> **"real Oracle experience is a required outcome"** is **dropped** — the legacy is a MySQL stand-in; revisit
+> only if an Oracle-specific skill becomes an explicit goal.
 
 **Placement options (same access model either way).** GlobalCore runs as a plain `docker compose` (Oracle
 `:1521` + SOAP app `:8080`) on a host reachable on the internal LAN (`10.0.0.0/24`); in-cluster consumers
@@ -77,6 +84,10 @@ models the **async batch** (pending → activated) honestly. **Debezium** on Glo
 changes → **NATS** events (`CLAIM_CREATED`, `CLAIM_STATUS_CHANGED`, `RESERVE_ADJUSTED`) — **not** Kafka.
 **Consequences.** Teaches the real legacy-wrap (SOAP translation + async issuance + CDC), not a clean-DB
 fantasy. Two egress paths to the controller (SOAP :8080, Oracle CDC :1521), each least-privilege.
+
+> **AMENDED 2026-09-29 / 2026-11-04:** legacy DB = **MySQL 8**; CDC = **Debezium MySQL binlog connector** →
+> NATS, egress to MySQL **`:3306`** (not Oracle `:1521`). The SOAP write/read path + the async-batch model are
+> unchanged. See the ADR-002 amendment.
 
 ## ADR-004 — CQRS-lite read-model (Postgres) {#adr-004}
 **Context.** The workbench needs fast, rich reads; hammering the legacy (SOAP or Oracle) for reads is slow
@@ -118,6 +129,9 @@ Oracle→Postgres migration may be done **later** purely to demonstrate the tech
 the goal.
 **Consequences.** Keeps the hybrid honest (wrapping is the steady state). The migration, if done, is a small
 capstone, not v1 scope.
+
+> **AMENDED 2026-11-04:** the legacy is **MySQL 8** (not Oracle — ADR-002 amendment), so the optional capstone
+> is **MySQL 8 → Postgres**. GlobalCore stays permanent either way.
 
 ## ADR-008 — Reads move to the CQRS read-model (eventual consistency); the port splits write/read {#adr-008}
 **Status: Accepted — implemented Slice D (2026-09-29).**

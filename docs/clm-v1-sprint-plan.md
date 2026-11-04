@@ -1,38 +1,41 @@
 # Sprint Plan — Claims v1 (the legacy-wrap thin slice)
 
+> **Reconciled 2026-11-04 — legacy DB = MySQL 8 (not Oracle).** The legacy core is **MySQL 8** (binlog+GTID CDC), a deliberate **stand-in for an Oracle-era core** (Oracle XE too heavy; pattern-over-dialect) — authoritative decision in the **ADR-002 / ADR-006 amendments**. The legacy lives **embedded** at `ktayl-claims/legacy/globalcore/` (the standalone `globalcore-legacy` repo was retired). Earlier drafts said "Oracle"; occurrences below are swept to MySQL.
+
+
 > **BMAD artefact — SPRINT PLAN + READINESS GATE.** Decomposes the [Brief](./brief.md) thin slice into
 > implementable stories with ACs, and states the readiness verdict.
 > **Status: DRAFT for review.** These become `bmad/stories/claims/clm-v1-slice/` files (synced to board
-> **#11**) **only after you validate this plan** — nothing is on the board yet, and **no Oracle is pulled**
+> **#11**) **only after you validate this plan** — nothing is on the board yet, and **no MySQL is pulled**
 > until this + the SA set are validated.
 
 ## Slice goal
 
 One LOB (**Property**, aligned with Underwriting #12), one claim type: take a claim **FNOL → reserve →
-settle → closed entirely through the ACL** over a real **legacy Oracle core**, with a coverage check
+settle → closed entirely through the ACL** over a real **legacy MySQL core**, with a coverage check
 against the legacy policy, an immutable audit trail, and legacy changes surfacing as **NATS events via CDC**.
 
 ## Story breakdown
 
 Each: parent epic · priority · estimate · acceptance criteria (happy + failure) · DoD.
 
-### S001 — Legacy Oracle core: schema + seed  · [CLM-01 / legacy] · P1 · 5
-Evolve **GlobalCore** (`globalcore-legacy`) to **Oracle Free** + the **Claims** schema (claims/reserves/payments + refs), seeded; keep it SOAP/batch/frozen, outside k8s.
-- **AC** ✓ Oracle Free runs (controller/node, `:1521`, `FREEPDB1`); ✓ `CUSTOMER/POLICY/CLAIM/CLAIM_RESERVE/PAYMENT` created; ✓ seeded with a Property policy book + customers.
+### S001 — Legacy MySQL core: schema + seed  · [CLM-01 / legacy] · P1 · 5
+Evolve **GlobalCore** (`ktayl-claims/legacy/globalcore`) to **MySQL 8** + the **Claims** schema (claims/reserves/payments + refs), seeded; keep it SOAP/batch/frozen, outside k8s.
+- **AC** ✓ MySQL 8 runs (controller/node, `:3306`, `GLOBALCORE (schema)`); ✓ `CUSTOMER/POLICY/CLAIM/CLAIM_RESERVE/PAYMENT` created; ✓ seeded with a Property policy book + customers.
 - **AC (fail)** ✗ creds are a **least-privilege app user** (not SYS/SYSTEM); ✗ creds come from **Vault/ESO**, none in Git.
 - **DoD** provisioning runbook (not GitOps); data volume + backup to MinIO; disk sizing confirmed (ADR-002 gate).
 
-### S002 — Legacy PL/SQL business logic  · [CLM-01 / legacy] · P1 · 5
-The rules that make it a real legacy: PL/SQL you must understand before wrapping.
+### S002 — Legacy stored procedures business logic  · [CLM-01 / legacy] · P1 · 5
+The rules that make it a real legacy: stored procedures you must understand before wrapping.
 - **AC** ✓ `PKG_CLAIMS.PROC_CREATE_CLAIM` (allocates claim number, initial state); ✓ `FUNC_CALCULATE_RESERVE`; ✓ in-DB **state-machine** (notified→…→closed) enforced; ✓ `TRG_CLAIM_AUDIT` append-only on every change.
 - **AC (fail)** ✗ an illegal state transition is rejected **in the DB**, not just the app.
-- **DoD** PL/SQL committed (signed); audit trail demoed.
+- **DoD** stored procedures committed (signed); audit trail demoed.
 
 ### S003 — ACL / API: FNOL + coverage check  · [CLM-01 / ACL] · P1 · 8
 The modern wrapper's entry point.
 - **AC** ✓ `POST /claims` (FNOL) → calls `PROC_CREATE_CLAIM` → returns the claim; ✓ **coverage check** reads the legacy `POLICY` via the ACL and **rejects an out-of-cover claim**; ✓ idempotent FNOL (dedup key).
-- **AC (fail)** ✗ no consumer can reach Oracle except the ACL (default-deny egress, T5); ✗ only parameterised/bound calls reach the legacy (no dynamic SQL, T9).
-- **DoD** OTel span ACL→Oracle; contract test; egress NetworkPolicy verified.
+- **AC (fail)** ✗ no consumer can reach MySQL except the ACL (default-deny egress, T5); ✗ only parameterised/bound calls reach the legacy (no dynamic SQL, T9).
+- **DoD** OTel span ACL→MySQL; contract test; egress NetworkPolicy verified.
 
 ### S004 — ACL: lifecycle + reserve + settle  · [CLM-01 / ACL] · P1 · 8
 - **AC** ✓ lifecycle transitions via the ACL drive the legacy state-machine; ✓ reserve set/adjust (`FUNC_CALCULATE_RESERVE`) with history; ✓ settlement/payment recorded; ✓ **authority matrix** (high reserve/settle → senior) enforced **server-side**.
@@ -40,18 +43,18 @@ The modern wrapper's entry point.
 - **DoD** authority + audit tests.
 
 ### S005 — CDC: Debezium → NATS  · [CLM-01 / integration] · P1 · 8
-- **AC** ✓ Debezium (Oracle connector, LogMiner/XStream) captures `CLAIM`/`CLAIM_RESERVE` changes; ✓ publishes `CLAIM_CREATED` / `CLAIM_STATUS_CHANGED` / `RESERVE_ADJUSTED` to **NATS**; ✓ CDC lag < 10s (PERF-3).
+- **AC** ✓ Debezium (MySQL binlog connector, binlog/GTID) captures `CLAIM`/`CLAIM_RESERVE` changes; ✓ publishes `CLAIM_CREATED` / `CLAIM_STATUS_CHANGED` / `RESERVE_ADJUSTED` to **NATS**; ✓ CDC lag < 10s (PERF-3).
 - **AC (fail)** ✗ if Debezium is down, ACL writes still succeed and the stream catches up on reconnect, **no data loss** (AVL-3).
 - **DoD** connector health metric + alert; replay tested.
 
 ### S006 — Read-model + workbench reads (CQRS-lite)  · [CLM-01 / read] · P2 · 5
-- **AC** ✓ a Postgres projector consumes the NATS events → claims read-model; ✓ the ACL serves claim reads from the read-model (p95 < 1.5s, PERF-1); ✓ **reads never hit Oracle** (T10).
+- **AC** ✓ a Postgres projector consumes the NATS events → claims read-model; ✓ the ACL serves claim reads from the read-model (p95 < 1.5s, PERF-1); ✓ **reads never hit MySQL** (T10).
 - **AC (fail)** ✗ the read-model is **rebuildable from CDC** (wipe + replay) (DR-2).
 - **DoD** rebuild demoed; RED metrics.
 
 ### S007 — Governed AI read-tool (optional in v1)  · [CLM-01 / AI, limited] · P3 · 5
 - **AC** ✓ one approved SQL-tool behind the ACL (e.g. `get_claim_summary`) returns permitted columns, **as the human's identity**, **PII-masked before the LLM**, traced in Langfuse; ✓ document Q&A via RAG.
-- **AC (fail)** ✗ the LLM never emits SQL at Oracle; ✗ AI cannot write (AI-1); ✗ a restricted claim isn't exposed via the tool (T8).
+- **AC (fail)** ✗ the LLM never emits SQL at MySQL; ✗ AI cannot write (AI-1); ✗ a restricted claim isn't exposed via the tool (T8).
 - **DoD** security-gate items (T4/T8) tested.
 
 ### S008 — Resilience: retries · DLQ · idempotency · circuit-breaker  · [CLM-01 / cross-cutting] · P1 · 5
@@ -59,7 +62,7 @@ The three failure modes a legacy-wrap actually hits — legacy slow/down, duplic
 built **in**, not bolted on. Cross-cutting: its ACs are proven against S003–S006.
 - **AC** ✓ ACL→legacy SOAP has **timeout + bounded backoff retry (jitter) + circuit breaker** (RES-1/2); ✓ **idempotent FNOL** via a client idempotency key — same key/replay ⇒ **one** claim, even concurrently (RES-3); ✓ **idempotent projection** — replaying the CDC stream leaves the read-model identical, no dup rows (RES-4); ✓ **DLQ** for poison CDC/NATS events — failed message goes to a DLQ subject, the stream keeps flowing, DLQ-depth alert fires (RES-5); ✓ JetStream durable consumer + **ack-after-commit** ⇒ kill the projector mid-batch, restart, **no lost events** (RES-6).
 - **AC (fail)** ✗ a create is **never** blindly auto-retried (only under the idempotency key); ✗ a poison event **never** blocks the stream and is **never** silently dropped.
-- **DoD** chaos drills scripted (stop Oracle → breaker trips + reads still served AVL-2; stop Debezium → catch-up no-loss AVL-3; double-send FNOL; replay stream; inject poison event); DLQ re-drive runbook.
+- **DoD** chaos drills scripted (stop MySQL → breaker trips + reads still served AVL-2; stop Debezium → catch-up no-loss AVL-3; double-send FNOL; replay stream; inject poison event); DLQ re-drive runbook.
 
 **Slice total ≈ 49 pts.** Sequence: **S001→S002 (legacy runs) → S003→S004 (the wrap) → S005 (events) →
 S006 (reads) → S007 (AI, optional)**, with **S008 resilience woven through S003–S006** (each cross-boundary
@@ -76,14 +79,14 @@ trailing hardening phase).
 | Threat model (boundary change) | ✅ [Threat Model](./architecture/threat-model.md) — T4/T8 (AI PII) + T5 (legacy egress/least-priv) = the security-gate blockers |
 | Scope disciplined (thin slice, deferrals explicit) | ✅ one LOB, lifecycle spine only; adjusters/subrogation/fraud/litigation deferred; migration a later footnote |
 | Resilience built in (retries/DLQ/idempotency) | ✅ **S008** + NFR **RES-1…6** — woven through S003–S006 with chaos drills, not a trailing phase |
-| ACL stack | ✅ **resolved — Java 21 + Spring Boot** (mature SOAP client + Oracle realism), ADR-006 |
-| Oracle placement | ✅ **resolved — on the controller** (Docker, outside k8s, like MinIO), ADR-002 — with a disk-monitoring caveat (controller ~98 G, MinIO ~33 G) |
+| ACL stack | ✅ **resolved — Java 21 + Spring Boot** (mature SOAP client + legacy-core realism), ADR-006 |
+| MySQL placement | ✅ **resolved — on the controller** (Docker, outside k8s, like MinIO), ADR-002 — with a disk-monitoring caveat (controller ~98 G, MinIO ~33 G) |
 
-**Verdict: PASS.** Both owner decisions are settled (ACL = Java/Spring Boot; Oracle on the controller).
-The plan is **implementation-ready**. **Disk gate (operational, not a blocker):** Oracle Free adds ~2–6 GB
+**Verdict: PASS.** Both owner decisions are settled (ACL = Java/Spring Boot; MySQL on the controller).
+The plan is **implementation-ready**. **Disk gate (operational, not a blocker):** MySQL 8 adds ~2–6 GB
 on the controller — size the data volume, add a disk alert, and be ready to relocate the container to a
 worker's local disk if headroom tightens.
 
 ## After validation (decisions settled — ready on your merge)
-1. Evolve **GlobalCore** (`globalcore-legacy`) to **Oracle Free (on the controller) + PL/SQL + the Claims domain** + write `bmad/stories/claims/clm-v1-slice/` (S001–S007) → sync to board **#11**. No *new* legacy repo.
+1. Evolve **GlobalCore** (`ktayl-claims/legacy/globalcore`) to **MySQL 8 (on the controller) + stored procedures + the Claims domain** + write `bmad/stories/claims/clm-v1-slice/` (S001–S007) → sync to board **#11**. No *new* legacy repo.
 2. Build the wrap (**Java 21 + Spring Boot ACL**) in sequence — legacy runs first, security gate (T4/T5/T8) enforced.

@@ -1,4 +1,7 @@
-# PRD — Claims (strangler over a legacy Oracle core) — ktayl-claims, board #11
+# PRD — Claims (strangler over a legacy MySQL core) — ktayl-claims, board #11
+
+> **Reconciled 2026-11-04 — legacy DB = MySQL 8 (not Oracle).** The legacy core is **MySQL 8** (binlog+GTID CDC), a deliberate **stand-in for an Oracle-era core** (Oracle XE too heavy; pattern-over-dialect) — authoritative decision in the **ADR-002 / ADR-006 amendments**. The legacy lives **embedded** at `ktayl-claims/legacy/globalcore/` (the standalone `globalcore-legacy` repo was retired). Earlier drafts said "Oracle"; occurrences below are swept to MySQL.
+
 
 > **BMAD artefact — PRODUCT CONTRACT.** Derived from the [Brief](./brief.md), the
 > [EA Blueprint §2b](https://andrelair-platform.github.io/minicloud-platform-docs/insurance-platform/enterprise-architecture-blueprint)
@@ -7,11 +10,11 @@
 
 ## 1. Vision
 
-A **claims capability** for the ktayl IS, built the way a real insurer modernizes: a **legacy Oracle core**
-(**GlobalCore** — Oracle + PL/SQL, SOAP, batch — authoritative) that **still works and stays**, wrapped by a
+A **claims capability** for the ktayl IS, built the way a real insurer modernizes: a **legacy MySQL core**
+(**GlobalCore** — MySQL + stored procedures, SOAP, batch — authoritative) that **still works and stays**, wrapped by a
 modern **Anti-Corruption-Layer** service (`ktayl-claims`) that exposes clean APIs, publishes legacy changes
 as **CDC events on NATS**, and hosts all *new* claims capability — while nothing (app, portal, AI) touches
-Oracle directly.
+MySQL directly.
 
 ## 2. Personas
 
@@ -29,9 +32,9 @@ Oracle directly.
 ⭐ = in the **v1 thin slice**. Full story decomposition: `bmad/stories/claims/` (CLM-01…05) + `docs/clm-v1-sprint-plan.md`.
 
 ### Legacy core (GlobalCore — the system of record)
-- ⭐ **FR-L1** Evolve **GlobalCore** to **Oracle Free** + the Claims schema: `CLAIM`, `CLAIM_RESERVE`,
+- ⭐ **FR-L1** Evolve **GlobalCore** to **MySQL 8** + the Claims schema: `CLAIM`, `CLAIM_RESERVE`,
   `PAYMENT` + refs (`CUSTOMER`, `POLICY`, `PRODUCT`, `BROKER`).
-- ⭐ **FR-L2** **PL/SQL** business logic in GlobalCore: `PKG_CLAIMS` (`PROC_CREATE_CLAIM`,
+- ⭐ **FR-L2** **stored procedures** business logic in GlobalCore: `PKG_CLAIMS` (`PROC_CREATE_CLAIM`,
   `FUNC_CALCULATE_RESERVE`), a claim **state-machine** + append-only audit — reached **only via GlobalCore's SOAP API**.
 - ⭐ **FR-L3** Authentically legacy: **SOAP/XML only** (`/ws`), a create is **pending until the nightly batch** activates it; seeded so coverage checks are real.
 - **FR-L4** GlobalCore is **frozen**: wrapped/intercepted/strangled — never edited to add a modern feature.
@@ -48,7 +51,7 @@ Oracle directly.
 - ⭐ **FR-C1** **Debezium** captures legacy `CLAIM`/`CLAIM_RESERVE` changes → **NATS** events
   (`CLAIM_CREATED`, `CLAIM_STATUS_CHANGED`, `RESERVE_ADJUSTED`, `CLAIM_PAID`) — **not** Kafka.
 - ⭐ **FR-C2** A modern **read-model** (Postgres) projects events → powers the claims workbench (CQRS-lite;
-  keeps read load off Oracle).
+  keeps read load off MySQL).
 - **FR-C3** Events are the integration contract for downstream (risk/analytics/reinsurance) — no direct legacy reads.
 
 ### Workbench + AI (later / read-only in v1)
@@ -62,9 +65,9 @@ Oracle directly.
 |---|---|
 | **Performance** | ACL claim read p95 < 1.5s (via read-model); FNOL create (legacy call) p95 < 2s; CDC lag < 10s |
 | **Availability** | Business-hours SLO 99.5%; **the wrapper degrades gracefully if the legacy is down** (read-model still serves reads; writes queue/fail-clearly) |
-| **Durability/DR** | Oracle Free data volume backed up (container-level); read-model rebuildable from CDC; RPO ≤ 24h |
-| **Security** | Authentik SSO+MFA; RBAC; **legacy creds via ESO/Vault**; default-deny egress to `controller-ip:1521`; PII masked before AI |
-| **Observability** | RED metrics + OTel traces **across the boundary** (ACL→Oracle), CDC lag metric, Langfuse for AI |
+| **Durability/DR** | MySQL 8 data volume backed up (container-level); read-model rebuildable from CDC; RPO ≤ 24h |
+| **Security** | Authentik SSO+MFA; RBAC; **legacy creds via ESO/Vault**; default-deny egress to `controller-ip:3306`; PII masked before AI |
+| **Observability** | RED metrics + OTel traces **across the boundary** (ACL→MySQL), CDC lag metric, Langfuse for AI |
 | **Auditability** | Legacy `TRG_CLAIM_AUDIT` (in-DB) + ACL-level audit of every API/AI action — immutable |
 
 ## 5. Compliance & regulatory (compliance-by-design)
@@ -73,7 +76,7 @@ Oracle directly.
 |---|---|
 | **Solvency II** | Reserves are authoritative + auditable (legacy reserve calc + history); clean data feed to actuarial |
 | **GDPR** | Claimant/beneficiary **PII** in claims — minimisation, retention, **Presidio masking before any LLM**, DPIA if AI tier rises |
-| **DORA / Outsourcing** | Oracle + LLM provider = ICT third-party → in the ICT register; egress control; the legacy's DR/BCP posture documented |
+| **DORA / Outsourcing** | MySQL + LLM provider = ICT third-party → in the ICT register; egress control; the legacy's DR/BCP posture documented |
 | **AML / Anti-fraud (ALFA)** | Fraud/SIU (CLM-04, later) + ALFA reporting; suspicious-claim trail |
 | **EU AI Act** | Any v1 AI = **limited tier** (read-only, human-facing): logging, citations. Autonomous claims decisions (#19) = high tier, gated. |
 
@@ -82,30 +85,30 @@ Evidence accrues to **Regulatory & Compliance #15** control library. Cert: **BC0
 ## 5b. Technology stack (ADR-006)
 
 Per the [stack-selection rule](https://github.com/andrelair-platform/minicloud-gitops/blob/main/.claude/rules/tech-stack-selection.md):
-- **Legacy:** **GlobalCore** (Java 8 / Spring / **SOAP** / batch) on **Oracle Database Free** (`…/database/free:latest-lite`) + **PL/SQL**, containers **outside k8s** (ADR-002).
-- **ACL/strangler:** **Java 21 + Spring Boot** (mature **SOAP client** (spring-ws/JAX-WS); the realistic "modern service wrapping a Java/SOAP/Oracle legacy" stack) — **decided** (owner, 2026-09-20; Python FastAPI + zeep considered and rejected — SOAP/Oracle realism is the point). See ADR-006.
-- **CDC:** **Debezium** (Oracle connector) → **NATS** (Debezium Server sink). **Read-model:** **PostgreSQL**.
+- **Legacy:** **GlobalCore** (Java 8 / Spring / **SOAP** / batch) on **MySQL 8** (`mysql:8`) + **stored procedures**, containers **outside k8s** (ADR-002).
+- **ACL/strangler:** **Java 21 + Spring Boot** (mature **SOAP client** (spring-ws/JAX-WS); the realistic "modern service wrapping a Java/SOAP/MySQL legacy" stack) — **decided** (owner, 2026-09-20; Python FastAPI + zeep considered and rejected — SOAP/MySQL realism is the point). See ADR-006.
+- **CDC:** **Debezium** (MySQL binlog connector) → **NATS** (Debezium Server sink). **Read-model:** **PostgreSQL**.
 - **Frontend (later):** Next.js + React.
 
 ## 6. Cost
 
-No new cloud spend. Oracle Free = zero licence. Footprint: one Oracle container (~2 GB RAM + a few GB disk,
+No new cloud spend. MySQL 8 = zero licence. Footprint: one MySQL container (~2 GB RAM + a few GB disk,
 on the controller/a node — **disk-gated**, see architecture) + a Spring Boot ACL + a Debezium connector +
 Postgres read-model in-cluster. AI (later) via the existing LiteLLM gateway within budget.
 
 ## 7. Dependencies
 
-**GlobalCore** (`globalcore-legacy`, evolved to Oracle+Claims) · `ktayl-policy-service` (live, coverage read) · `ktayl-integration`/NATS
+**GlobalCore** (`ktayl-claims/legacy/globalcore`, evolved to MySQL+Claims) · `ktayl-policy-service` (live, coverage read) · `ktayl-integration`/NATS
 (CDC) · Compliance #15 · AI platform (governed) · Vault/ESO (legacy creds). See [Solution Architecture](./architecture/solution-architecture.md).
 
 ## 8. Out of scope (v1)
 
-Adjuster mgmt · subrogation · fraud/SIU · litigation · the AI copilot · multi-LOB · an Oracle→Postgres migration.
+Adjuster mgmt · subrogation · fraud/SIU · litigation · the AI copilot · multi-LOB · an MySQL→Postgres migration.
 
 ## 9. Definition of Done (product-level)
 
 A Property claim can be taken **FNOL → reserve → settle → closed entirely through the ACL** (never touching
-Oracle directly); the **legacy Oracle core holds the authoritative record** created by its PL/SQL; the
+MySQL directly); the **legacy MySQL core holds the authoritative record** created by its stored procedures; the
 **coverage check** reads the legacy policy; every change is on an **immutable audit trail**; legacy changes
 surface as **NATS events via CDC**; and it passes the **architecture + security gates** (legacy creds in
 Vault, default-deny egress, PII masked, identity-propagated AI).
