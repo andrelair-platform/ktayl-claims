@@ -1,0 +1,12 @@
+# Trivy ignore file — dated, justified CVE risk-acceptances (NOT blanket suppression).
+# Each entry: the CVE, why it is not reachable here, why no fix is applied, and a review date.
+
+# ── CVE-2026-47884 — Spring MVC XsltView SSRF/RCE (CVSS 9.8, org.springframework:spring-webmvc) ──
+# NOT REACHABLE in this service: ktayl-claims is a REST-only backend (4 @RestController, 0 @Controller,
+#   no ViewResolver / no XsltView / no view rendering). The vuln requires XsltView + a "/**" mapping
+#   that renders a view with an unspecified name — a code path this app does not have.
+# NO OSS FIX on the Spring 6.x line: 6.2.20 is commercial-only (Spring Framework 6.2 left OSS support
+#   2026-06-30); the only open-source fix is Spring Framework 7.0.9 = Spring Boot 4.0 (a major upgrade,
+#   tracked as a follow-up — see the "upgrade to Spring Boot 4" issue).
+# REVIEW BY: 2026-12-31 (or sooner, when the Spring Boot 4 upgrade lands — then remove this entry).
+CVE-2026-47884

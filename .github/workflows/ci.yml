@@ -171,6 +171,7 @@ jobs:
           exit-code:      '1'
           severity:       CRITICAL
           ignore-unfixed: true
+          trivyignores:   .trivyignore
 
       - name: Push (only reached if the scan passed)
         id: build
@@ -225,6 +226,7 @@ jobs:
           exit-code:      '1'
           severity:       CRITICAL
           ignore-unfixed: true
+          trivyignores:   .trivyignore
 
       - name: Push frontend (only if the scan passed)
         id: build_frontend
