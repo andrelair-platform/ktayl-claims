@@ -38,9 +38,11 @@ jobs:
     name: integration tests (L2, Testcontainers)
     runs-on: ubuntu-latest
     env:
-      # Testcontainers 1.19.8's docker-java negotiates Docker API 1.32, but the runner's daemon now
-      # requires ≥1.40 ("client version 1.32 is too old") → the socket strategy fails with "no valid
-      # Docker environment". Pin a supported API version to unblock the Testcontainers ITs.
+      # Testcontainers 1.19.8's UnixSocket strategy hardcodes Docker API 1.32 and IGNORES
+      # DOCKER_API_VERSION; the runner's daemon requires ≥1.40 ("client version 1.32 is too old").
+      # Setting DOCKER_HOST forces TC's *Environment* strategy, which DOES honour DOCKER_API_VERSION →
+      # it negotiates a supported API. The two together unblock the Testcontainers ITs.
+      DOCKER_HOST: "unix:///var/run/docker.sock"
       DOCKER_API_VERSION: "1.43"
     steps:
       - uses: actions/checkout@v4
