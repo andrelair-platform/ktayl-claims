@@ -23,6 +23,10 @@
     <!-- Override the Spring-Boot-managed embedded Tomcat to clear 7 CRITICAL CVEs
          (CVE-2025-24813 + 2026 tomcat-coyote advisories) flagged by the CI Trivy gate. -->
     <tomcat.version>10.1.60</tomcat.version>
+    <!-- Bump Testcontainers above the Spring-Boot-3.3.5-managed 1.19.8: its bundled docker-java
+         negotiates Docker API 1.32, which the CI runner's daemon rejects (min 1.40) → the L2
+         Testcontainers ITs can't find Docker. 1.20.x's docker-java defaults to a supported API. -->
+    <testcontainers.version>1.20.4</testcontainers.version>
   </properties>
 
   <dependencies>

@@ -37,6 +37,11 @@ jobs:
   integration-test:
     name: integration tests (L2, Testcontainers)
     runs-on: ubuntu-latest
+    env:
+      # Real fix is the Testcontainers 1.20.x bump in pom.xml (1.19.8's docker-java hardcoded API 1.32,
+      # rejected by the runner's daemon min 1.40 — proven: both TC strategies failed even with the env
+      # vars set). This pin is belt-and-suspenders in case the daemon's minimum API rises again.
+      DOCKER_API_VERSION: "1.43"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
