@@ -37,6 +37,14 @@ jobs:
   integration-test:
     name: integration tests (L2, Testcontainers)
     runs-on: ubuntu-latest
+    env:
+      # Root cause: the runner's Docker daemon requires API ≥1.40, but docker-java pings with 1.32 and
+      # is rejected ("client version 1.32 is too old"). docker-java does NOT read the DOCKER_API_VERSION
+      # *env* var (a Docker-CLI var) — it reads the `api.version` *system property*, and only via TC's
+      # EnvironmentAndSystemProperty strategy, which is selected when DOCKER_HOST is set. So: set
+      # DOCKER_HOST (→ that strategy) and pass -Dapi.version via argLine to the forked test JVM.
+      DOCKER_HOST: "unix:///var/run/docker.sock"
+      DOCKER_API_VERSION: "1.43"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -45,6 +53,8 @@ jobs:
           java-version: '21'
           cache: maven
       - name: Integration tests (failsafe + Testcontainers)
+        # api.version is set in the failsafe <argLine> in pom.xml (a command-line -DargLine is ignored
+        # once the plugin hardcodes argLine — that was why earlier CI-side attempts were no-ops).
         run: mvn -B verify -Dsurefire.skip=true
 
   # ── Schema docs drift-check: the committed ERD must match the Flyway migrations ──
