@@ -53,9 +53,9 @@ jobs:
           java-version: '21'
           cache: maven
       - name: Integration tests (failsafe + Testcontainers)
-        # -DargLine passes api.version into the forked test JVM → docker-java pings the daemon with 1.43
-        # (≥ the min 1.40) instead of the default 1.32.
-        run: mvn -B verify -Dsurefire.skip=true -DargLine="-Dapi.version=1.43"
+        # api.version is set in the failsafe <argLine> in pom.xml (a command-line -DargLine is ignored
+        # once the plugin hardcodes argLine — that was why earlier CI-side attempts were no-ops).
+        run: mvn -B verify -Dsurefire.skip=true
 
   # ── Schema docs drift-check: the committed ERD must match the Flyway migrations ──
   # Reverse-engineers the schema from the migrations (ephemeral Postgres, no live-cluster access) with
