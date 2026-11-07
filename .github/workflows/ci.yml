@@ -38,9 +38,12 @@ jobs:
     name: integration tests (L2, Testcontainers)
     runs-on: ubuntu-latest
     env:
-      # Real fix is the Testcontainers 1.20.x bump in pom.xml (1.19.8's docker-java hardcoded API 1.32,
-      # rejected by the runner's daemon min 1.40 — proven: both TC strategies failed even with the env
-      # vars set). This pin is belt-and-suspenders in case the daemon's minimum API rises again.
+      # Root cause: the runner's Docker daemon requires API ≥1.40, but docker-java pings with 1.32 and
+      # is rejected ("client version 1.32 is too old"). docker-java does NOT read the DOCKER_API_VERSION
+      # *env* var (a Docker-CLI var) — it reads the `api.version` *system property*, and only via TC's
+      # EnvironmentAndSystemProperty strategy, which is selected when DOCKER_HOST is set. So: set
+      # DOCKER_HOST (→ that strategy) and pass -Dapi.version via argLine to the forked test JVM.
+      DOCKER_HOST: "unix:///var/run/docker.sock"
       DOCKER_API_VERSION: "1.43"
     steps:
       - uses: actions/checkout@v4
@@ -50,7 +53,9 @@ jobs:
           java-version: '21'
           cache: maven
       - name: Integration tests (failsafe + Testcontainers)
-        run: mvn -B verify -Dsurefire.skip=true
+        # -DargLine passes api.version into the forked test JVM → docker-java pings the daemon with 1.43
+        # (≥ the min 1.40) instead of the default 1.32.
+        run: mvn -B verify -Dsurefire.skip=true -DargLine="-Dapi.version=1.43"
 
   # ── Schema docs drift-check: the committed ERD must match the Flyway migrations ──
   # Reverse-engineers the schema from the migrations (ephemeral Postgres, no live-cluster access) with
