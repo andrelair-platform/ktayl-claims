@@ -1,7 +1,7 @@
 name: GlobalCore (legacy) image
 
 # The simulated legacy runs OUTSIDE k3s (ADR-002) as a container on the controller — but its image is
-# CI-built like every other service (never hand-built): Harbor (dev) + ghcr (durable), scan-BEFORE-push,
+# CI-built like every other service (never hand-built): ghcr (durable), scan-BEFORE-push,
 # cosign-signed. The controller just pulls + runs it. Separate maven project → its own workflow.
 on:
   push:
@@ -13,8 +13,6 @@ on:
   workflow_dispatch:
 
 env:
-  REGISTRY:   harbor.10.0.0.200.nip.io
-  IMAGE_NAME: library/globalcore-soap
   GHCR_IMAGE: ghcr.io/andrelair-platform/globalcore-soap
   SERVICE_DIR: legacy/globalcore/service
 
@@ -34,7 +32,7 @@ jobs:
         working-directory: ${{ env.SERVICE_DIR }}
 
   build-and-push:
-    name: build image → Harbor + ghcr
+    name: build image → ghcr
     needs: build-test
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
@@ -53,29 +51,9 @@ jobs:
           SHA=$(git rev-parse --short HEAD)
           echo "image_tag=${SHA}" >> "$GITHUB_OUTPUT"
           { echo "tags<<EOF";
-            echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${SHA}";
             echo "${{ env.GHCR_IMAGE }}:${SHA}";
             echo "EOF"; } >> "$GITHUB_OUTPUT"
 
-      - name: Connect to Tailscale
-        uses: tailscale/github-action@v4.1.3
-        with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret:    ${{ secrets.TS_OAUTH_SECRET }}
-          tags: tag:ci
-
-      - name: Trust minicloud CA
-        run: |
-          sudo mkdir -p /etc/docker/certs.d/${{ env.REGISTRY }}
-          echo "${{ secrets.MINICLOUD_CA_CERT }}" | sudo tee /etc/docker/certs.d/${{ env.REGISTRY }}/ca.crt
-          echo "${{ secrets.MINICLOUD_CA_CERT }}" | sudo tee /usr/local/share/ca-certificates/minicloud-ca.crt
-          sudo update-ca-certificates
-
-      - uses: docker/login-action@v4
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.HARBOR_USER }}
-          password: ${{ secrets.HARBOR_PASSWORD }}
       - name: Login to GHCR
         uses: docker/login-action@v4
         with:
@@ -84,10 +62,6 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: docker/setup-buildx-action@v4
-        with:
-          buildkitd-config-inline: |
-            [registry."harbor.10.0.0.200.nip.io"]
-              insecure = true
 
       # SCAN BEFORE PUSH (the root-cause discipline): build+load locally, Trivy, then push only if clean.
       - name: Build (load locally — NOT pushed yet)
@@ -125,10 +99,8 @@ jobs:
         uses: sigstore/cosign-installer@v3
       - name: Install syft
         uses: anchore/sbom-action/download-syft@v0
-      - name: Sign + attach SBOM (Harbor + ghcr)
+      - name: Sign + attach SBOM (ghcr)
         run: |
-          syft ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }} -o cyclonedx-json=sbom.json
-          cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
-          cosign attach sbom --sbom sbom.json --type cyclonedx ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+          syft ${{ env.GHCR_IMAGE }}@${{ steps.build.outputs.digest }} -o cyclonedx-json=sbom.json
           cosign sign --yes ${{ env.GHCR_IMAGE }}@${{ steps.build.outputs.digest }}
           cosign attach sbom --sbom sbom.json --type cyclonedx ${{ env.GHCR_IMAGE }}@${{ steps.build.outputs.digest }}
