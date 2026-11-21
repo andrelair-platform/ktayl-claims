@@ -91,4 +91,10 @@ public class ClaimReadEntity {
     void setDeleted(boolean v) { this.deleted = v; }
 
     OffsetDateTime getSourceUpdatedAt() { return sourceUpdatedAt; }
+
+    // package-private accessors used by the financial-event emitter (CLM-FIN-02) to compute reserve/
+    // settlement movements against the prior projected amounts.
+    String getPolicyNumber() { return policyNumber; }
+    Long getReserveMinor() { return reserveMinor; }
+    Long getSettlementMinor() { return settlementMinor; }
 }
