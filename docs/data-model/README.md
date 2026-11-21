@@ -2,10 +2,11 @@
 
 ## Tables
 
-| Name                                                      | Columns | Comment | Type       |
-| --------------------------------------------------------- | ------- | ------- | ---------- |
-| [public.claim_event_outbox](public.claim_event_outbox.md) | 9       |         | BASE TABLE |
-| [public.claim_read](public.claim_read.md)                 | 13      |         | BASE TABLE |
+| Name                                                              | Columns | Comment | Type       |
+| ----------------------------------------------------------------- | ------- | ------- | ---------- |
+| [public.claim_event_outbox](public.claim_event_outbox.md)         | 9       |         | BASE TABLE |
+| [public.claim_read](public.claim_read.md)                         | 13      |         | BASE TABLE |
+| [public.claim_reserve_approval](public.claim_reserve_approval.md) | 11      |         | BASE TABLE |
 
 ## Relations
 
@@ -38,6 +39,19 @@ erDiagram
   bigint settlement_minor
   timestamp_with_time_zone source_updated_at
   varchar_24_ status
+}
+"public.claim_reserve_approval" {
+  numeric_18_2_ amount
+  varchar_32_ claim_number
+  timestamp_with_time_zone decided_at
+  varchar_16_ decided_authority
+  varchar_64_ decided_by
+  uuid id
+  varchar_500_ reason
+  timestamp_with_time_zone requested_at
+  varchar_16_ requested_authority
+  varchar_64_ requested_by
+  varchar_16_ status
 }
 ```
 
