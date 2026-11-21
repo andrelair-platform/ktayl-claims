@@ -53,4 +53,12 @@ class ApiExceptionHandler {
         pd.setTitle("Claim not found");
         return pd;
     }
+
+    /** Unknown reserve approval ⇒ 404 (CLM-FIN-03a). */
+    @ExceptionHandler(com.andrelair.ktayl.claims.domain.ApprovalNotFoundException.class)
+    ProblemDetail approvalNotFound(com.andrelair.ktayl.claims.domain.ApprovalNotFoundException ex) {
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
+        pd.setTitle("Reserve approval not found");
+        return pd;
+    }
 }

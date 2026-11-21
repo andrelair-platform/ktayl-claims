@@ -74,6 +74,11 @@ cdc:
 # ktayl-core's claimsgl module consumes). Until that stream is provisioned, publishes fail soft → rows stay
 # pending → retried (dormant-until-wired).
 claims:
+  # CLM-FIN-03a: the large-loss threshold (euros). A reserve above it ALWAYS needs a second approver (four-
+  # eyes), even within the requester's authority — the large-loss review control. Above a requester's own
+  # authority also needs approval regardless.
+  reserve:
+    large-loss-threshold: ${CLAIMS_RESERVE_LARGE_LOSS_THRESHOLD:100000}
   events:
     # PROD-ONLY (default false). There is ONE shared NATS + ONE CLAIMS_EVENTS stream consumed by the PROD
     # ktayl-core claimsgl module — so only prod claims may publish, else dev movements would post to the prod

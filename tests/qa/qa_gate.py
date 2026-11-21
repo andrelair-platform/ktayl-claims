@@ -104,10 +104,25 @@ check("settle RESERVED→SETTLED → 200", s==200 and json.loads(b)["status"]=="
 s,b = reserve(clm, 1000, auth="SENIOR")  # on terminal SETTLED
 check("reserve on SETTLED (terminal) → 409", s==409, f"status={s}")
 
-print("=== 8. AUTHZ / AUTHORITY MATRIX ===")
+print("=== 8. AUTHZ / AUTHORITY MATRIX + RESERVE FOUR-EYES (CLM-FIN-03a) ===")
 s,b = fnol("FIRE", key="qa-auth-"+num()); aclm = json.loads(b).get("claimNumber")
-s,b = reserve(aclm, 60000, auth="ADJUSTER")   # > 50000 adjuster max
-check("ADJUSTER reserve >50000 → 403", s==403, f"status={s}")
+# Above-authority reserve is no longer a flat 403 — it is HELD for approval (202 PENDING), then a
+# different, higher-authority person approves it (four-eyes). Self-approval is forbidden (403).
+s,b = reserve(aclm, 60000, auth="ADJUSTER", user="adj.sophie")   # > 50000 adjuster max → pending
+approval_id = None
+try: approval_id = json.loads(b).get("approvalId")
+except: pass
+check("ADJUSTER reserve >50000 → 202 PENDING_APPROVAL", s==202 and approval_id, f"status={s} id={approval_id}")
+if approval_id:
+    s,b = call("POST", f"/reserve-approvals/{approval_id}/approve",
+               headers={"X-Claims-Authority":"ADJUSTER","X-Claims-User":"adj.sophie"})
+    check("self-approval → 403", s==403, f"status={s}")
+    s,b = call("POST", f"/reserve-approvals/{approval_id}/approve",
+               headers={"X-Claims-Authority":"SENIOR","X-Claims-User":"sen.marc"})
+    check("different SENIOR approves → 200 RESERVED", s==200 and json.loads(b)["status"]=="RESERVED", f"status={s}")
+    s,b = call("POST", f"/reserve-approvals/{approval_id}/approve",
+               headers={"X-Claims-Authority":"SENIOR","X-Claims-User":"sen.marc"})
+    check("approve an already-decided request → 409", s==409, f"status={s}")
 s,b = call("POST", f"/{aclm}/reserve", body={"amount":1000})  # no authority header
 check("missing X-Claims-Authority → 4xx", 400<=s<500, f"status={s}")
 s,b = call("POST", f"/{aclm}/reserve", body={"amount":1000}, headers={"X-Claims-Authority":"BOGUS"})
