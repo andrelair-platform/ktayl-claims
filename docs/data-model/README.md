@@ -2,9 +2,10 @@
 
 ## Tables
 
-| Name                                      | Columns | Comment | Type       |
-| ----------------------------------------- | ------- | ------- | ---------- |
-| [public.claim_read](public.claim_read.md) | 13      |         | BASE TABLE |
+| Name                                                      | Columns | Comment | Type       |
+| --------------------------------------------------------- | ------- | ------- | ---------- |
+| [public.claim_event_outbox](public.claim_event_outbox.md) | 9       |         | BASE TABLE |
+| [public.claim_read](public.claim_read.md)                 | 13      |         | BASE TABLE |
 
 ## Relations
 
@@ -12,6 +13,17 @@
 erDiagram
 
 
+"public.claim_event_outbox" {
+  integer attempts
+  timestamp_with_time_zone created_at
+  varchar_96_ event_id
+  uuid id
+  varchar_500_ last_error
+  text payload
+  timestamp_with_time_zone published_at
+  varchar_16_ status
+  varchar_80_ subject
+}
 "public.claim_read" {
   bigint claim_id
   varchar_32_ claim_number

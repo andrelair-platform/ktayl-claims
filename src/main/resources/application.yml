@@ -67,3 +67,13 @@ cdc:
   # v2: bumped after rekeying the read-model on the source id — a fresh durable replays the whole stream
   # from the start, rebuilding claim_read correctly and dropping the old TMP-orphan rows.
   durable: ${CDC_DURABLE:claims-projector-v2}
+
+# CLM-FIN-02 (ADR-021): the claim financial-event outbox publisher cadence. The projector writes
+# insurance.claims.financial events (reserve movement | settlement payment) to the outbox atomically with
+# the read-model upsert; this drains them to NATS JetStream (captured by the CLAIMS_EVENTS stream, which
+# ktayl-core's claimsgl module consumes). Until that stream is provisioned, publishes fail soft → rows stay
+# pending → retried (dormant-until-wired).
+claims:
+  events:
+    publish-interval-ms: ${CLAIMS_EVENTS_PUBLISH_INTERVAL_MS:15000}
+    publish-initial-ms: ${CLAIMS_EVENTS_PUBLISH_INITIAL_MS:10000}
