@@ -2,6 +2,108 @@
   "name": "claims",
   "tables": [
     {
+      "name": "public.claim_event_outbox",
+      "type": "BASE TABLE",
+      "columns": [
+        {
+          "name": "attempts",
+          "type": "integer",
+          "nullable": false,
+          "default": "0"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        },
+        {
+          "name": "event_id",
+          "type": "varchar(96)",
+          "nullable": false
+        },
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "last_error",
+          "type": "varchar(500)",
+          "nullable": true
+        },
+        {
+          "name": "payload",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "published_at",
+          "type": "timestamp with time zone",
+          "nullable": true
+        },
+        {
+          "name": "status",
+          "type": "varchar(16)",
+          "nullable": false,
+          "default": "'pending'::character varying"
+        },
+        {
+          "name": "subject",
+          "type": "varchar(80)",
+          "nullable": false
+        }
+      ],
+      "indexes": [
+        {
+          "name": "claim_event_outbox_event_id_key",
+          "def": "CREATE UNIQUE INDEX claim_event_outbox_event_id_key ON public.claim_event_outbox USING btree (event_id)",
+          "table": "public.claim_event_outbox",
+          "columns": [
+            "event_id"
+          ]
+        },
+        {
+          "name": "claim_event_outbox_pkey",
+          "def": "CREATE UNIQUE INDEX claim_event_outbox_pkey ON public.claim_event_outbox USING btree (id)",
+          "table": "public.claim_event_outbox",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "idx_claim_event_outbox_pending",
+          "def": "CREATE INDEX idx_claim_event_outbox_pending ON public.claim_event_outbox USING btree (status) WHERE ((status)::text = 'pending'::text)",
+          "table": "public.claim_event_outbox",
+          "columns": [
+            "status"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "claim_event_outbox_event_id_key",
+          "type": "UNIQUE",
+          "def": "UNIQUE (event_id)",
+          "table": "public.claim_event_outbox",
+          "referenced_table": "",
+          "columns": [
+            "event_id"
+          ]
+        },
+        {
+          "name": "claim_event_outbox_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.claim_event_outbox",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        }
+      ]
+    },
+    {
       "name": "public.claim_read",
       "type": "BASE TABLE",
       "columns": [
