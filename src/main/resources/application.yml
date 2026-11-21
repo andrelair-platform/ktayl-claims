@@ -75,5 +75,9 @@ cdc:
 # pending → retried (dormant-until-wired).
 claims:
   events:
+    # PROD-ONLY (default false). There is ONE shared NATS + ONE CLAIMS_EVENTS stream consumed by the PROD
+    # ktayl-core claimsgl module — so only prod claims may publish, else dev movements would post to the prod
+    # GL. The projector still writes outbox rows everywhere (harmless when unpublished); this gates the drain.
+    enabled: ${CLAIMS_EVENTS_ENABLED:false}
     publish-interval-ms: ${CLAIMS_EVENTS_PUBLISH_INTERVAL_MS:15000}
     publish-initial-ms: ${CLAIMS_EVENTS_PUBLISH_INITIAL_MS:10000}

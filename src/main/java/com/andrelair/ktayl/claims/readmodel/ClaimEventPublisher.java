@@ -3,6 +3,7 @@ package com.andrelair.ktayl.claims.readmodel;
 import io.nats.client.Connection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
 import org.springframework.data.domain.Limit;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -25,9 +26,16 @@ import java.util.UUID;
  * <p>JetStream publish (not core NATS fire-and-forget) so the broker acks persistence — reliable delivery to
  * the durable consumer. Idempotent end-to-end: the deterministic {@code event_id} is the consumer's dedup key
  * (and this outbox already deduped on it at enqueue).
+ *
+ * <p><b>Prod-only emission</b> ({@code claims.events.enabled=true}, default false; CLM-FIN-04). The CLAIMS_EVENTS
+ * stream + the ktayl-core {@code claimsgl} consumer are PROD, and there is ONE shared NATS — so if dev claims
+ * also published, dev claim movements would post to the <i>prod</i> GL. Gating the publisher to prod keeps dev
+ * dormant (the projector still writes outbox rows in dev — harmless, unpublished — so dev stays a complete
+ * emitter the day it earns its own stream). This mirrors billing's prod-authoritative single-consumer discipline.
  */
 @Component
 @Profile("readmodel")
+@ConditionalOnProperty(name = "claims.events.enabled", havingValue = "true")
 public class ClaimEventPublisher {
 
     private static final Logger log = LoggerFactory.getLogger(ClaimEventPublisher.class);
