@@ -79,6 +79,10 @@ claims:
   # authority also needs approval regardless.
   reserve:
     large-loss-threshold: ${CLAIMS_RESERVE_LARGE_LOSS_THRESHOLD:100000}
+  # CLM-FIN-03b: the payment large-loss threshold (euros). A settlement above it ALWAYS goes through
+  # request→approve→execute (four-eyes + a separate executor), even within the requester's settle authority.
+  payment:
+    large-loss-threshold: ${CLAIMS_PAYMENT_LARGE_LOSS_THRESHOLD:100000}
   events:
     # PROD-ONLY (default false). There is ONE shared NATS + ONE CLAIMS_EVENTS stream consumed by the PROD
     # ktayl-core claimsgl module — so only prod claims may publish, else dev movements would post to the prod

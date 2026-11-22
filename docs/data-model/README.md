@@ -7,6 +7,7 @@
 | [public.claim_event_outbox](public.claim_event_outbox.md)         | 9       |         | BASE TABLE |
 | [public.claim_read](public.claim_read.md)                         | 13      |         | BASE TABLE |
 | [public.claim_reserve_approval](public.claim_reserve_approval.md) | 11      |         | BASE TABLE |
+| [public.payment_request](public.payment_request.md)               | 13      |         | BASE TABLE |
 
 ## Relations
 
@@ -46,6 +47,21 @@ erDiagram
   timestamp_with_time_zone decided_at
   varchar_16_ decided_authority
   varchar_64_ decided_by
+  uuid id
+  varchar_500_ reason
+  timestamp_with_time_zone requested_at
+  varchar_16_ requested_authority
+  varchar_64_ requested_by
+  varchar_16_ status
+}
+"public.payment_request" {
+  numeric_18_2_ amount
+  timestamp_with_time_zone approved_at
+  varchar_16_ approved_authority
+  varchar_64_ approved_by
+  varchar_32_ claim_number
+  timestamp_with_time_zone executed_at
+  varchar_64_ executed_by
   uuid id
   varchar_500_ reason
   timestamp_with_time_zone requested_at
