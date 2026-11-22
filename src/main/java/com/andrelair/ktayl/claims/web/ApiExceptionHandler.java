@@ -61,4 +61,12 @@ class ApiExceptionHandler {
         pd.setTitle("Reserve approval not found");
         return pd;
     }
+
+    /** Unknown payment request ⇒ 404 (CLM-FIN-03b). */
+    @ExceptionHandler(com.andrelair.ktayl.claims.domain.PaymentRequestNotFoundException.class)
+    ProblemDetail paymentNotFound(com.andrelair.ktayl.claims.domain.PaymentRequestNotFoundException ex) {
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
+        pd.setTitle("Payment request not found");
+        return pd;
+    }
 }

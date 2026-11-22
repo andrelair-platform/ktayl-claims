@@ -127,12 +127,39 @@ s,b = call("POST", f"/{aclm}/reserve", body={"amount":1000})  # no authority hea
 check("missing X-Claims-Authority → 4xx", 400<=s<500, f"status={s}")
 s,b = call("POST", f"/{aclm}/reserve", body={"amount":1000}, headers={"X-Claims-Authority":"BOGUS"})
 check("invalid authority value → 4xx not 5xx", 400<=s<500, f"status={s}")
-# boundary: exactly at adjuster limit ok, just over rejected
+# boundary: exactly at adjuster limit applies directly; just over goes to approval (CLM-FIN-03a)
 s,b = reserve(aclm, 50000, auth="ADJUSTER")
 check("ADJUSTER reserve ==50000 (boundary) → 200", s==200, f"status={s}")
 s,b = fnol("FIRE", key="qa-auth2-"+num()); a2 = json.loads(b).get("claimNumber")
 s,b = reserve(a2, 50001, auth="ADJUSTER")
-check("ADJUSTER reserve 50001 (over) → 403", s==403, f"status={s}")
+check("ADJUSTER reserve 50001 (over) → 202 PENDING_APPROVAL", s==202, f"status={s}")
+
+print("=== 8b. PAYMENT REQUEST→APPROVE→EXECUTE FOUR-EYES (CLM-FIN-03b) ===")
+# Reserve the claim first (within authority, direct), then request an above-authority settlement.
+pclm = None
+s,b = fnol("FIRE", key="qa-pay-"+num()); pclm = json.loads(b).get("claimNumber")
+reserve(pclm, 30000, auth="SENIOR")                 # RESERVED directly (within authority, < large-loss)
+s,b = settle(pclm, 20000, auth="ADJUSTER", user="adj.sophie")   # > 10000 adjuster settle cap → request
+pay_id = None
+try: pay_id = json.loads(b).get("requestId")
+except: pass
+check("ADJUSTER settle >10000 → 202 PENDING_APPROVAL", s==202 and pay_id, f"status={s} id={pay_id}")
+if pay_id:
+    s,b = call("POST", f"/payment-requests/{pay_id}/execute",
+               headers={"X-Claims-Authority":"SENIOR","X-Claims-User":"sen.marc"})
+    check("execute before approve → 409", s==409, f"status={s}")
+    s,b = call("POST", f"/payment-requests/{pay_id}/approve",
+               headers={"X-Claims-Authority":"ADJUSTER","X-Claims-User":"adj.sophie"})
+    check("self-approve payment → 403", s==403, f"status={s}")
+    s,b = call("POST", f"/payment-requests/{pay_id}/approve",
+               headers={"X-Claims-Authority":"SENIOR","X-Claims-User":"sen.marc"})
+    check("different SENIOR approves payment → 204", s==204, f"status={s}")
+    s,b = call("POST", f"/payment-requests/{pay_id}/execute",
+               headers={"X-Claims-Authority":"SENIOR","X-Claims-User":"adj.sophie"})
+    check("requester executes own payment → 403 (SoD)", s==403, f"status={s}")
+    s,b = call("POST", f"/payment-requests/{pay_id}/execute",
+               headers={"X-Claims-Authority":"SENIOR","X-Claims-User":"sen.lea"})
+    check("different executor executes → 200 SETTLED", s==200 and json.loads(b)["status"]=="SETTLED", f"status={s}")
 
 print("=== 9. ROBUSTNESS / MONEY ===")
 s,b = fnol("FIRE", key="qa-money-"+num()); mclm = json.loads(b).get("claimNumber")

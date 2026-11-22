@@ -3,6 +3,8 @@ package com.andrelair.ktayl.claims.web;
 import com.andrelair.ktayl.claims.application.Actor;
 import com.andrelair.ktayl.claims.application.Authority;
 import com.andrelair.ktayl.claims.application.ClaimLifecycleService;
+import com.andrelair.ktayl.claims.application.PaymentApprovalService;
+import com.andrelair.ktayl.claims.application.PaymentRequestEntity;
 import com.andrelair.ktayl.claims.application.ReserveApprovalEntity;
 import com.andrelair.ktayl.claims.application.ReserveApprovalService;
 import jakarta.validation.Valid;
@@ -47,13 +49,27 @@ public class ClaimLifecycleController {
 
     public record RejectRequest(String reason) {}
 
+    /** The 202 body when a payment is held for approval. */
+    public record PaymentRequestHandle(UUID requestId, String status) {}
+
+    public record PaymentRequestView(UUID requestId, String claimNumber, java.math.BigDecimal amount,
+            String requestedBy, String status, String approvedBy) {
+        static PaymentRequestView from(PaymentRequestEntity r) {
+            return new PaymentRequestView(r.getId(), r.getClaimNumber(), r.getAmount(), r.getRequestedBy(),
+                    r.getStatus(), r.getApprovedBy());
+        }
+    }
+
     private final ClaimLifecycleService lifecycle;
     private final ObjectProvider<ReserveApprovalService> reserveApprovals;
+    private final ObjectProvider<PaymentApprovalService> paymentApprovals;
 
     public ClaimLifecycleController(ClaimLifecycleService lifecycle,
-            ObjectProvider<ReserveApprovalService> reserveApprovals) {
+            ObjectProvider<ReserveApprovalService> reserveApprovals,
+            ObjectProvider<PaymentApprovalService> paymentApprovals) {
         this.lifecycle = lifecycle;
         this.reserveApprovals = reserveApprovals;
+        this.paymentApprovals = paymentApprovals;
     }
 
     /** The claims inbox — newest-first, optional {@code ?status=} filter. Reads the read-model. */
@@ -118,12 +134,63 @@ public class ClaimLifecycleController {
         return reserveApprovals.getObject().listPending().stream().map(ReserveApprovalView::from).toList();
     }
 
+    /**
+     * Settle (pay) a claim. Within authority + not a large loss ⇒ 200 paid (ClaimResponse). Above authority
+     * OR a large loss (readmodel profile) ⇒ 202 + a {@link PaymentRequestHandle} (NOT paid) — the payment
+     * then goes request → approve → execute (CLM-FIN-03b).
+     */
     @PostMapping("/{claimNumber}/settle")
-    public ClaimResponse settle(
+    public ResponseEntity<?> settle(
             @PathVariable String claimNumber,
             @RequestHeader("X-Claims-Authority") Authority authority,
             @RequestHeader(value = "X-Claims-User", defaultValue = "unknown") String user,
             @Valid @RequestBody SettleRequest req) {
-        return ClaimResponse.from(lifecycle.settle(new Actor(user, authority), claimNumber, req.amount()));
+        Actor actor = new Actor(user, authority);
+        PaymentApprovalService payments = paymentApprovals.getIfAvailable();
+        if (payments == null) {
+            // stub-only local mode: apply directly (403 above authority, as before).
+            return ResponseEntity.ok(ClaimResponse.from(lifecycle.settle(actor, claimNumber, req.amount())));
+        }
+        PaymentApprovalService.Outcome outcome = payments.submit(actor, claimNumber, req.amount());
+        if ("PENDING_APPROVAL".equals(outcome.status())) {
+            return ResponseEntity.accepted().body(new PaymentRequestHandle(outcome.requestId(), outcome.status()));
+        }
+        return ResponseEntity.ok(ClaimResponse.from(outcome.claim()));
+    }
+
+    /** Approve a requested payment (a different, higher-authority person). Does NOT pay — execute does. */
+    @PostMapping("/payment-requests/{requestId}/approve")
+    public ResponseEntity<Void> approvePayment(
+            @PathVariable UUID requestId,
+            @RequestHeader("X-Claims-Authority") Authority authority,
+            @RequestHeader(value = "X-Claims-User", defaultValue = "unknown") String user) {
+        paymentApprovals.getObject().approve(new Actor(user, authority), requestId);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Execute an approved payment (an authorised, non-requester executor) ⇒ the disbursement (settle). */
+    @PostMapping("/payment-requests/{requestId}/execute")
+    public ClaimResponse executePayment(
+            @PathVariable UUID requestId,
+            @RequestHeader("X-Claims-Authority") Authority authority,
+            @RequestHeader(value = "X-Claims-User", defaultValue = "unknown") String user) {
+        return ClaimResponse.from(paymentApprovals.getObject().execute(new Actor(user, authority), requestId));
+    }
+
+    /** Reject a requested payment (a different, higher-authority person), with a reason. */
+    @PostMapping("/payment-requests/{requestId}/reject")
+    public ResponseEntity<Void> rejectPayment(
+            @PathVariable UUID requestId,
+            @RequestHeader("X-Claims-Authority") Authority authority,
+            @RequestHeader(value = "X-Claims-User", defaultValue = "unknown") String user,
+            @RequestBody(required = false) RejectRequest req) {
+        paymentApprovals.getObject().reject(new Actor(user, authority), requestId, req == null ? null : req.reason());
+        return ResponseEntity.noContent().build();
+    }
+
+    /** The open payment-request queue (requested + approved, for a reviewer / executor). */
+    @GetMapping("/payment-requests")
+    public List<PaymentRequestView> openPaymentRequests() {
+        return paymentApprovals.getObject().listOpen().stream().map(PaymentRequestView::from).toList();
     }
 }

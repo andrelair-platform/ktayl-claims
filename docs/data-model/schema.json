@@ -342,6 +342,127 @@
           ]
         }
       ]
+    },
+    {
+      "name": "public.payment_request",
+      "type": "BASE TABLE",
+      "columns": [
+        {
+          "name": "amount",
+          "type": "numeric(18,2)",
+          "nullable": false
+        },
+        {
+          "name": "approved_at",
+          "type": "timestamp with time zone",
+          "nullable": true
+        },
+        {
+          "name": "approved_authority",
+          "type": "varchar(16)",
+          "nullable": true
+        },
+        {
+          "name": "approved_by",
+          "type": "varchar(64)",
+          "nullable": true
+        },
+        {
+          "name": "claim_number",
+          "type": "varchar(32)",
+          "nullable": false
+        },
+        {
+          "name": "executed_at",
+          "type": "timestamp with time zone",
+          "nullable": true
+        },
+        {
+          "name": "executed_by",
+          "type": "varchar(64)",
+          "nullable": true
+        },
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "reason",
+          "type": "varchar(500)",
+          "nullable": true
+        },
+        {
+          "name": "requested_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        },
+        {
+          "name": "requested_authority",
+          "type": "varchar(16)",
+          "nullable": false
+        },
+        {
+          "name": "requested_by",
+          "type": "varchar(64)",
+          "nullable": false
+        },
+        {
+          "name": "status",
+          "type": "varchar(16)",
+          "nullable": false,
+          "default": "'requested'::character varying"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_payment_request_claim",
+          "def": "CREATE INDEX idx_payment_request_claim ON public.payment_request USING btree (claim_number)",
+          "table": "public.payment_request",
+          "columns": [
+            "claim_number"
+          ]
+        },
+        {
+          "name": "idx_payment_request_open",
+          "def": "CREATE INDEX idx_payment_request_open ON public.payment_request USING btree (status) WHERE ((status)::text = ANY ((ARRAY['requested'::character varying, 'approved'::character varying])::text[]))",
+          "table": "public.payment_request",
+          "columns": [
+            "status"
+          ]
+        },
+        {
+          "name": "payment_request_pkey",
+          "def": "CREATE UNIQUE INDEX payment_request_pkey ON public.payment_request USING btree (id)",
+          "table": "public.payment_request",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "payment_request_amount_check",
+          "type": "CHECK",
+          "def": "CHECK ((amount \u003e (0)::numeric))",
+          "table": "public.payment_request",
+          "referenced_table": "",
+          "columns": [
+            "amount"
+          ]
+        },
+        {
+          "name": "payment_request_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.payment_request",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        }
+      ]
     }
   ],
   "driver": {
