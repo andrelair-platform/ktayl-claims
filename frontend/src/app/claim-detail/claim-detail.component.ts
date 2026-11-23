@@ -4,7 +4,7 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { DatePipe } from '@angular/common';
 
 import { ClaimsService } from '../claims.service';
-import { Authority, Claim } from '../models';
+import { ApprovalHandle, Authority, Claim, isPendingApproval } from '../models';
 
 @Component({
   selector: 'app-claim-detail',
@@ -115,11 +115,21 @@ export class ClaimDetailComponent {
     this.run(this.svc.settle(this.id(), this.settleAmount, this.authority, 'workbench'), 'Claim settled');
   }
 
-  private run(obs: import('rxjs').Observable<Claim>, okMsg: string) {
+  private run(obs: import('rxjs').Observable<Claim | ApprovalHandle>, okMsg: string) {
     this.busy.set(true);
     this.actionMsg.set(null);
     obs.subscribe({
-      next: (c) => { this.claim.set(c); this.actionOk.set(true); this.actionMsg.set(okMsg); this.busy.set(false); },
+      next: (res) => {
+        this.actionOk.set(true);
+        if (isPendingApproval(res)) {
+          // above authority / large loss → held for four-eyes; NOT applied. Approve it on the Review board.
+          this.actionMsg.set('Above your authority (or a large loss) — sent for four-eyes approval. See the Review board.');
+        } else {
+          this.claim.set(res);
+          this.actionMsg.set(okMsg);
+        }
+        this.busy.set(false);
+      },
       error: (e) => {
         const detail = e?.error?.detail || e?.error?.message || e?.message || 'request failed';
         this.actionOk.set(false);

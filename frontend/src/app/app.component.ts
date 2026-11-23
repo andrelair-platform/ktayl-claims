@@ -9,6 +9,7 @@ import { RouterLink, RouterOutlet } from '@angular/router';
       <a routerLink="/" class="brand"><span class="dot"></span> Claims Workbench</a>
       <nav>
         <a routerLink="/" class="link">Inbox</a>
+        <a routerLink="/review-board" class="link">Review board</a>
         <a routerLink="/claims/new" class="btn">New FNOL</a>
       </nav>
     </header>
